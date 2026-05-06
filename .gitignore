@@ -1,24 +1,26 @@
+# Dependencias
+node_modules
+
+# Build de producción
+dist
+dist-ssr
+
+# Variables de entorno / llaves privadas
+.env
+.env.local
+.env.*.local
+
 # Logs
-logs
-*.log
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
-lerna-debug.log*
 
-node_modules
-dist
-dist-ssr
-*.local
+# Archivos del sistema
+.DS_Store
+Thumbs.db
 
-# Editor directories and files
+# Configuración local de editores
 .vscode/*
 !.vscode/extensions.json
 .idea
-.DS_Store
-*.suo
-*.ntvs*
-*.njsproj
-*.sln
-*.sw?
