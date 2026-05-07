@@ -3,6 +3,13 @@ import { supabase } from "./lib/supabaseClient";
 
 const riskLevels = ["Bajo", "Medio", "Alto", "Crítico"];
 
+const navItems = [
+  { id: "dashboard", label: "Dashboard", subtitle: "Centro de control" },
+  { id: "atenciones", label: "Atenciones", subtitle: "Registro clínico" },
+  { id: "inventario", label: "Inventario", subtitle: "Insumos médicos" },
+  { id: "reportes", label: "Reportes", subtitle: "Vista ejecutiva" },
+];
+
 function createInitialForm() {
   return {
     patient_name: "",
@@ -57,7 +64,6 @@ function evaluateVitalAlerts(vitals) {
   ) {
     if (systolicBp > 159) alerts.push("TA sistólica elevada");
     if (systolicBp < 100) alerts.push("TA sistólica baja");
-
     if (diastolicBp > 90) alerts.push("TA diastólica elevada");
     if (diastolicBp < 60) alerts.push("TA diastólica baja");
   }
@@ -133,7 +139,9 @@ function buildCountList(items, getValue, limit = 5) {
   items.forEach((item) => {
     const rawValue = getValue(item);
     const value =
-      rawValue === null || rawValue === undefined || String(rawValue).trim() === ""
+      rawValue === null ||
+      rawValue === undefined ||
+      String(rawValue).trim() === ""
         ? "Sin especificar"
         : String(rawValue).trim();
 
@@ -169,6 +177,51 @@ function downloadCsv(filename, headers, rows) {
   URL.revokeObjectURL(url);
 }
 
+function getRiskBadgeClass(risk) {
+  if (risk === "Crítico") return "bg-red-100 text-red-800 ring-red-200";
+  if (risk === "Alto") return "bg-orange-100 text-orange-800 ring-orange-200";
+  if (risk === "Medio") return "bg-amber-100 text-amber-800 ring-amber-200";
+  return "bg-emerald-100 text-emerald-800 ring-emerald-200";
+}
+
+function getRoleBadgeClass(role) {
+  if (role === "admin") return "bg-red-600 text-white";
+  if (role === "medico") return "bg-blue-100 text-blue-800";
+  if (role === "enfermeria") return "bg-emerald-100 text-emerald-800";
+  if (role === "lectura") return "bg-zinc-100 text-zinc-700";
+  if (role === "bloqueado") return "bg-red-100 text-red-800";
+  return "bg-zinc-200 text-zinc-700";
+}
+
+function KpiCard({ label, value, helper, tone = "neutral" }) {
+  const toneClass =
+    tone === "red"
+      ? "border-red-200 bg-red-50 text-red-900"
+      : tone === "dark"
+      ? "border-zinc-800 bg-zinc-950 text-white"
+      : tone === "amber"
+      ? "border-amber-200 bg-amber-50 text-amber-900"
+      : "border-zinc-200 bg-white text-zinc-950";
+
+  return (
+    <div className={`rounded-2xl border p-5 shadow-sm ${toneClass}`}>
+      <p className="text-xs font-semibold uppercase tracking-[0.18em] opacity-70">
+        {label}
+      </p>
+      <p className="mt-3 text-3xl font-black tracking-tight">{value}</p>
+      {helper && <p className="mt-2 text-sm opacity-70">{helper}</p>}
+    </div>
+  );
+}
+
+function EmptyState({ text }) {
+  return (
+    <div className="rounded-2xl border border-dashed border-zinc-300 bg-zinc-50 p-6 text-center text-sm text-zinc-500">
+      {text}
+    </div>
+  );
+}
+
 export default function App() {
   const [session, setSession] = useState(null);
   const [checkingSession, setCheckingSession] = useState(true);
@@ -187,7 +240,9 @@ export default function App() {
   const [attentions, setAttentions] = useState([]);
   const [form, setForm] = useState(createInitialForm());
 
+  const [activeModule, setActiveModule] = useState("atenciones");
   const [reportMonth, setReportMonth] = useState(getCurrentMonthKey());
+  const [logoFailed, setLogoFailed] = useState(false);
 
   const [filters, setFilters] = useState({
     startDate: "",
@@ -223,8 +278,7 @@ export default function App() {
 
   useEffect(() => {
     if (session) {
-      loadUserRole();
-      loadData();
+      loadSessionData();
     }
   }, [session]);
 
@@ -234,6 +288,9 @@ export default function App() {
 
   const canEditInventory = ["admin", "medico", "enfermeria"].includes(userRole);
   const canDelete = userRole === "admin";
+  const isBlocked = userRole === "bloqueado";
+
+  const currentModule = navItems.find((item) => item.id === activeModule);
 
   const uniqueAreas = useMemo(() => {
     const areas = attentions
@@ -250,12 +307,10 @@ export default function App() {
       .map((item) => getMonthKey(item.attention_date))
       .filter(Boolean);
 
-    const uniqueMonths = Array.from(new Set([getCurrentMonthKey(), ...months]))
+    return Array.from(new Set([getCurrentMonthKey(), ...months]))
       .filter(Boolean)
       .sort()
       .reverse();
-
-    return uniqueMonths;
   }, [attentions]);
 
   const filteredAttentions = useMemo(() => {
@@ -351,12 +406,17 @@ export default function App() {
       );
     }).length;
 
+    const lowStock = medicines.filter(
+      (medicine) => Number(medicine.stock || 0) <= Number(medicine.minimum_stock || 0)
+    ).length;
+
     return {
       total,
       highRisk,
       averageMinutes,
       medicinesCount: medicines.length,
       vitalAlertsCount,
+      lowStock,
     };
   }, [filteredAttentions, medicines]);
 
@@ -450,8 +510,38 @@ export default function App() {
     };
   }, [monthlyAttentions, medicines]);
 
+  const recentVitalAlerts = useMemo(() => {
+    return attentions
+      .map((attention) => ({
+        ...attention,
+        vitalAlerts: evaluateVitalAlerts({
+          heart_rate: attention.heart_rate,
+          respiratory_rate: attention.respiratory_rate,
+          systolic_bp: attention.systolic_bp,
+          diastolic_bp: attention.diastolic_bp,
+          temperature: attention.temperature,
+        }),
+      }))
+      .filter((attention) => attention.vitalAlerts.length > 0)
+      .slice(0, 5);
+  }, [attentions]);
+
+  const lowStockMedicines = useMemo(() => {
+    return medicines.filter(
+      (medicine) => Number(medicine.stock || 0) <= Number(medicine.minimum_stock || 0)
+    );
+  }, [medicines]);
+
+  async function loadSessionData() {
+    const role = await loadUserRole();
+
+    if (role === "bloqueado") return;
+
+    await loadData();
+  }
+
   async function loadUserRole() {
-    if (!session?.user?.id) return;
+    if (!session?.user?.id) return null;
 
     const { data, error } = await supabase
       .from("user_roles")
@@ -462,16 +552,17 @@ export default function App() {
     if (error) {
       alert("No se pudo cargar el rol del usuario: " + error.message);
       setUserRole("sin_rol");
-      return;
+      return "sin_rol";
     }
 
     if (!data) {
       alert("Este usuario no tiene rol asignado en Supabase.");
       setUserRole("sin_rol");
-      return;
+      return "sin_rol";
     }
 
     setUserRole(data.role);
+    return data.role;
   }
 
   async function loadData() {
@@ -946,6 +1037,884 @@ export default function App() {
     );
   }
 
+  function BrandBlock({ compact = false }) {
+    return (
+      <div className={`flex items-center gap-3 ${compact ? "" : "mb-8"}`}>
+        {!logoFailed ? (
+          <img
+            src="/logo.png"
+            alt="SOS"
+            onError={() => setLogoFailed(true)}
+            className="h-12 w-12 rounded-2xl object-contain ring-1 ring-white/10"
+          />
+        ) : (
+          <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-red-700 text-lg font-black text-white">
+            SOS
+          </div>
+        )}
+
+        <div>
+          <p className="text-lg font-black tracking-tight text-white">
+            SOS MedicalOps
+          </p>
+          <p className="text-xs font-medium text-zinc-400">
+            Centro médico-operativo
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  function renderDashboard() {
+    return (
+      <div className="space-y-6">
+        <section className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-5">
+          <KpiCard
+            label="Atenciones filtradas"
+            value={kpis.total}
+            helper="Registros visibles"
+            tone="dark"
+          />
+          <KpiCard
+            label="Alertas vitales"
+            value={kpis.vitalAlertsCount}
+            helper="Fuera de rango"
+            tone={kpis.vitalAlertsCount > 0 ? "red" : "neutral"}
+          />
+          <KpiCard
+            label="Riesgo alto/crítico"
+            value={kpis.highRisk}
+            helper="Casos prioritarios"
+            tone={kpis.highRisk > 0 ? "amber" : "neutral"}
+          />
+          <KpiCard
+            label="Tiempo promedio"
+            value={`${kpis.averageMinutes.toFixed(1)} min`}
+            helper="Atención clínica"
+          />
+          <KpiCard
+            label="Inventario bajo"
+            value={kpis.lowStock}
+            helper="Insumos en mínimo"
+            tone={kpis.lowStock > 0 ? "red" : "neutral"}
+          />
+        </section>
+
+        <section className="grid grid-cols-1 gap-6 xl:grid-cols-3">
+          <div className="rounded-3xl border border-zinc-200 bg-white p-6 shadow-sm xl:col-span-2">
+            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.25em] text-red-700">
+                  Acción rápida
+                </p>
+                <h2 className="mt-1 text-2xl font-black tracking-tight">
+                  Registrar nueva atención
+                </h2>
+                <p className="mt-1 text-sm text-zinc-500">
+                  Acceso prioritario para operación de enfermería.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setActiveModule("atenciones")}
+                className="rounded-2xl bg-red-700 px-5 py-3 text-sm font-bold text-white shadow-sm hover:bg-red-800"
+              >
+                + Nueva atención
+              </button>
+            </div>
+
+            <div className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-3">
+              <div className="rounded-2xl bg-zinc-950 p-5 text-white">
+                <p className="text-xs uppercase tracking-[0.2em] text-zinc-400">
+                  Operación
+                </p>
+                <p className="mt-2 text-lg font-bold">Captura rápida</p>
+                <p className="mt-2 text-sm text-zinc-400">
+                  Registro clínico estructurado con signos vitales.
+                </p>
+              </div>
+
+              <div className="rounded-2xl bg-zinc-100 p-5">
+                <p className="text-xs uppercase tracking-[0.2em] text-zinc-500">
+                  Control
+                </p>
+                <p className="mt-2 text-lg font-bold">Trazabilidad</p>
+                <p className="mt-2 text-sm text-zinc-500">
+                  Historial consultable, filtros y exportación.
+                </p>
+              </div>
+
+              <div className="rounded-2xl bg-red-50 p-5 text-red-950">
+                <p className="text-xs uppercase tracking-[0.2em] text-red-700">
+                  Riesgo
+                </p>
+                <p className="mt-2 text-lg font-bold">Alertas clínicas</p>
+                <p className="mt-2 text-sm text-red-800">
+                  Semáforo operativo para signos fuera de rango.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="rounded-3xl border border-zinc-200 bg-white p-6 shadow-sm">
+            <h3 className="text-lg font-bold">Alertas recientes</h3>
+
+            <div className="mt-4 space-y-3">
+              {recentVitalAlerts.length > 0 ? (
+                recentVitalAlerts.map((attention) => (
+                  <div
+                    key={attention.id}
+                    className="rounded-2xl border border-red-100 bg-red-50 p-4"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="font-bold text-red-950">
+                          {attention.patient_name}
+                        </p>
+                        <p className="text-xs text-red-800">
+                          {attention.attention_date} · {attention.area || "Sin área"}
+                        </p>
+                      </div>
+                      <span className="rounded-full bg-red-700 px-2 py-1 text-xs font-bold text-white">
+                        alerta
+                      </span>
+                    </div>
+
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {attention.vitalAlerts.map((alert) => (
+                        <span
+                          key={alert}
+                          className="rounded-full bg-white px-2 py-1 text-xs font-semibold text-red-800"
+                        >
+                          {alert}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <EmptyState text="Sin alertas vitales recientes." />
+              )}
+            </div>
+          </div>
+        </section>
+      </div>
+    );
+  }
+
+  function renderAttentionForm() {
+    return (
+      <section className="rounded-3xl border border-zinc-200 bg-white p-6 shadow-sm">
+        <div className="mb-5 flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.25em] text-red-700">
+              Registro operativo
+            </p>
+            <h2 className="mt-1 text-2xl font-black tracking-tight">
+              Nueva atención médica
+            </h2>
+            <p className="mt-1 text-sm text-zinc-500">
+              Captura rápida para enfermería y operación clínica in-plant.
+            </p>
+          </div>
+
+          <span
+            className={`w-fit rounded-full px-3 py-1 text-xs font-bold ${getRoleBadgeClass(
+              userRole
+            )}`}
+          >
+            Rol: {userRole || "cargando"}
+          </span>
+        </div>
+
+        {canRegisterAttention ? (
+          <form
+            onSubmit={saveAttention}
+            className="grid grid-cols-1 gap-4 md:grid-cols-3"
+          >
+            <input
+              className="rounded-2xl border border-zinc-300 bg-white px-4 py-3 outline-none ring-red-700/20 focus:ring-4"
+              placeholder="Nombre del paciente"
+              value={form.patient_name}
+              onChange={(event) =>
+                updateField("patient_name", event.target.value)
+              }
+            />
+
+            <input
+              className="rounded-2xl border border-zinc-300 bg-white px-4 py-3 outline-none ring-red-700/20 focus:ring-4"
+              placeholder="Número de empleado"
+              value={form.employee_number}
+              onChange={(event) =>
+                updateField("employee_number", event.target.value)
+              }
+            />
+
+            <input
+              className="rounded-2xl border border-zinc-300 bg-white px-4 py-3 outline-none ring-red-700/20 focus:ring-4"
+              type="date"
+              value={form.attention_date}
+              onChange={(event) =>
+                updateField("attention_date", event.target.value)
+              }
+            />
+
+            <input
+              className="rounded-2xl border border-zinc-300 bg-white px-4 py-3 outline-none ring-red-700/20 focus:ring-4"
+              placeholder="Área"
+              value={form.area}
+              onChange={(event) => updateField("area", event.target.value)}
+            />
+
+            <input
+              className="rounded-2xl border border-zinc-300 bg-white px-4 py-3 outline-none ring-red-700/20 focus:ring-4"
+              placeholder="Diagnóstico / motivo"
+              value={form.diagnosis}
+              onChange={(event) =>
+                updateField("diagnosis", event.target.value)
+              }
+            />
+
+            <select
+              className="rounded-2xl border border-zinc-300 bg-white px-4 py-3 outline-none ring-red-700/20 focus:ring-4"
+              value={form.risk_level}
+              onChange={(event) =>
+                updateField("risk_level", event.target.value)
+              }
+            >
+              {riskLevels.map((risk) => (
+                <option key={risk} value={risk}>
+                  Riesgo {risk}
+                </option>
+              ))}
+            </select>
+
+            <input
+              className="rounded-2xl border border-zinc-300 bg-white px-4 py-3 outline-none ring-red-700/20 focus:ring-4"
+              type="number"
+              min="0"
+              placeholder="Tiempo en minutos"
+              value={form.attention_minutes}
+              onChange={(event) =>
+                updateField("attention_minutes", event.target.value)
+              }
+            />
+
+            <select
+              className="rounded-2xl border border-zinc-300 bg-white px-4 py-3 outline-none ring-red-700/20 focus:ring-4"
+              value={form.medicine_id}
+              onChange={(event) =>
+                updateField("medicine_id", event.target.value)
+              }
+            >
+              <option value="">Sin medicamento</option>
+              {medicines.map((medicine) => (
+                <option key={medicine.id} value={medicine.id}>
+                  {medicine.name} | stock: {medicine.stock}
+                </option>
+              ))}
+            </select>
+
+            <input
+              className="rounded-2xl border border-zinc-300 bg-white px-4 py-3 outline-none ring-red-700/20 focus:ring-4"
+              type="number"
+              min="0"
+              placeholder="Cantidad medicamento"
+              value={form.medicine_quantity}
+              onChange={(event) =>
+                updateField("medicine_quantity", event.target.value)
+              }
+            />
+
+            <div className="rounded-3xl border border-zinc-200 bg-zinc-50 p-5 md:col-span-3">
+              <div className="mb-4 flex items-center justify-between">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.25em] text-zinc-500">
+                    Vigilancia clínica
+                  </p>
+                  <h3 className="mt-1 font-bold">Signos vitales</h3>
+                </div>
+                <span className="rounded-full bg-zinc-950 px-3 py-1 text-xs font-bold text-white">
+                  Semáforo activo
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
+                <label className="block">
+                  <span className="mb-1 block text-sm font-bold text-zinc-700">
+                    FC
+                  </span>
+                  <input
+                    className="w-full rounded-2xl border border-zinc-300 px-4 py-3 outline-none ring-red-700/20 focus:ring-4"
+                    type="number"
+                    min="20"
+                    max="250"
+                    placeholder="82"
+                    value={form.heart_rate}
+                    onChange={(event) =>
+                      updateField("heart_rate", event.target.value)
+                    }
+                  />
+                  <span className="mt-1 block text-xs text-zinc-500">lpm</span>
+                </label>
+
+                <label className="block">
+                  <span className="mb-1 block text-sm font-bold text-zinc-700">
+                    FR
+                  </span>
+                  <input
+                    className="w-full rounded-2xl border border-zinc-300 px-4 py-3 outline-none ring-red-700/20 focus:ring-4"
+                    type="number"
+                    min="5"
+                    max="80"
+                    placeholder="18"
+                    value={form.respiratory_rate}
+                    onChange={(event) =>
+                      updateField("respiratory_rate", event.target.value)
+                    }
+                  />
+                  <span className="mt-1 block text-xs text-zinc-500">rpm</span>
+                </label>
+
+                <label className="block">
+                  <span className="mb-1 block text-sm font-bold text-zinc-700">
+                    TA
+                  </span>
+                  <input
+                    className="w-full rounded-2xl border border-zinc-300 px-4 py-3 outline-none ring-red-700/20 focus:ring-4"
+                    type="text"
+                    inputMode="numeric"
+                    placeholder="120/80"
+                    value={form.blood_pressure}
+                    onChange={(event) =>
+                      updateField(
+                        "blood_pressure",
+                        formatBloodPressureInput(event.target.value)
+                      )
+                    }
+                  />
+                  <span className="mt-1 block text-xs text-zinc-500">mmHg</span>
+                </label>
+
+                <label className="block">
+                  <span className="mb-1 block text-sm font-bold text-zinc-700">
+                    Temp
+                  </span>
+                  <input
+                    className="w-full rounded-2xl border border-zinc-300 px-4 py-3 outline-none ring-red-700/20 focus:ring-4"
+                    type="number"
+                    min="30"
+                    max="45"
+                    step="0.1"
+                    placeholder="36.7"
+                    value={form.temperature}
+                    onChange={(event) =>
+                      updateField("temperature", event.target.value)
+                    }
+                  />
+                  <span className="mt-1 block text-xs text-zinc-500">°C</span>
+                </label>
+              </div>
+            </div>
+
+            <textarea
+              className="min-h-28 rounded-2xl border border-zinc-300 bg-white px-4 py-3 outline-none ring-red-700/20 focus:ring-4 md:col-span-3"
+              placeholder="Notas clínicas u observaciones operativas"
+              value={form.notes}
+              onChange={(event) => updateField("notes", event.target.value)}
+            />
+
+            <button className="rounded-2xl bg-red-700 px-5 py-4 font-black text-white shadow-sm hover:bg-red-800 md:col-span-3">
+              Guardar atención médica
+            </button>
+          </form>
+        ) : (
+          <EmptyState text="Tu rol actual no permite registrar atenciones." />
+        )}
+      </section>
+    );
+  }
+
+  function renderFiltersAndHistory() {
+    return (
+      <section className="rounded-3xl border border-zinc-200 bg-white p-6 shadow-sm">
+        <div className="mb-5 flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.25em] text-red-700">
+              Trazabilidad
+            </p>
+            <h2 className="mt-1 text-2xl font-black tracking-tight">
+              Historial y filtros
+            </h2>
+            <p className="mt-1 text-sm text-zinc-500">
+              Registros filtrados: {filteredAttentions.length}
+            </p>
+          </div>
+
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <button
+              type="button"
+              onClick={resetFilters}
+              className="rounded-2xl border border-zinc-300 px-4 py-3 text-sm font-bold text-zinc-700 hover:bg-zinc-50"
+            >
+              Limpiar filtros
+            </button>
+
+            <button
+              type="button"
+              onClick={exportFilteredToCsv}
+              className="rounded-2xl bg-zinc-950 px-4 py-3 text-sm font-bold text-white hover:bg-zinc-800"
+            >
+              Exportar CSV
+            </button>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-3 xl:grid-cols-6">
+          <input
+            className="rounded-2xl border border-zinc-300 px-4 py-3"
+            type="date"
+            value={filters.startDate}
+            onChange={(event) => updateFilter("startDate", event.target.value)}
+          />
+
+          <input
+            className="rounded-2xl border border-zinc-300 px-4 py-3"
+            type="date"
+            value={filters.endDate}
+            onChange={(event) => updateFilter("endDate", event.target.value)}
+          />
+
+          <select
+            className="rounded-2xl border border-zinc-300 px-4 py-3"
+            value={filters.riskLevel}
+            onChange={(event) => updateFilter("riskLevel", event.target.value)}
+          >
+            <option value="Todos">Todos los riesgos</option>
+            {riskLevels.map((risk) => (
+              <option key={risk} value={risk}>
+                {risk}
+              </option>
+            ))}
+          </select>
+
+          <select
+            className="rounded-2xl border border-zinc-300 px-4 py-3"
+            value={filters.area}
+            onChange={(event) => updateFilter("area", event.target.value)}
+          >
+            {uniqueAreas.map((area) => (
+              <option key={area} value={area}>
+                {area === "Todas" ? "Todas las áreas" : area}
+              </option>
+            ))}
+          </select>
+
+          <input
+            className="rounded-2xl border border-zinc-300 px-4 py-3"
+            placeholder="No. empleado"
+            value={filters.employeeNumber}
+            onChange={(event) =>
+              updateFilter("employeeNumber", event.target.value)
+            }
+          />
+
+          <input
+            className="rounded-2xl border border-zinc-300 px-4 py-3"
+            placeholder="Buscar"
+            value={filters.searchText}
+            onChange={(event) => updateFilter("searchText", event.target.value)}
+          />
+        </div>
+
+        <label className="mt-4 flex items-center gap-2 text-sm font-bold text-zinc-700">
+          <input
+            type="checkbox"
+            checked={filters.onlyVitalAlerts}
+            onChange={(event) =>
+              updateFilter("onlyVitalAlerts", event.target.checked)
+            }
+          />
+          Mostrar solo atenciones con alertas vitales
+        </label>
+
+        <div className="mt-6 overflow-x-auto">
+          <table className="w-full min-w-[1200px] text-sm">
+            <thead>
+              <tr className="border-b bg-zinc-950 text-left text-xs uppercase tracking-wide text-white">
+                <th className="p-3">Fecha</th>
+                <th className="p-3">Paciente</th>
+                <th className="p-3">Empleado</th>
+                <th className="p-3">Área</th>
+                <th className="p-3">Diagnóstico</th>
+                <th className="p-3">Riesgo</th>
+                <th className="p-3">Tiempo</th>
+                <th className="p-3">Signos vitales</th>
+                <th className="p-3">Alerta</th>
+                <th className="p-3">Notas</th>
+                {canDelete && <th className="p-3 text-right">Acciones</th>}
+              </tr>
+            </thead>
+
+            <tbody>
+              {filteredAttentions.map((attention) => {
+                const vitalAlerts = evaluateVitalAlerts({
+                  heart_rate: attention.heart_rate,
+                  respiratory_rate: attention.respiratory_rate,
+                  systolic_bp: attention.systolic_bp,
+                  diastolic_bp: attention.diastolic_bp,
+                  temperature: attention.temperature,
+                });
+
+                return (
+                  <tr key={attention.id} className="border-b align-top hover:bg-zinc-50">
+                    <td className="p-3">{attention.attention_date}</td>
+
+                    <td className="p-3 font-bold">{attention.patient_name}</td>
+
+                    <td className="p-3">{attention.employee_number}</td>
+                    <td className="p-3">{attention.area || "-"}</td>
+                    <td className="p-3">{attention.diagnosis || "-"}</td>
+
+                    <td className="p-3">
+                      <span
+                        className={`rounded-full px-2 py-1 text-xs font-bold ring-1 ${getRiskBadgeClass(
+                          attention.risk_level
+                        )}`}
+                      >
+                        {attention.risk_level}
+                      </span>
+                    </td>
+
+                    <td className="p-3">{attention.attention_minutes} min</td>
+
+                    <td className="p-3">
+                      <div className="space-y-1 text-xs text-zinc-700">
+                        <div>
+                          <strong>FC:</strong>{" "}
+                          {attention.heart_rate
+                            ? `${attention.heart_rate} lpm`
+                            : "-"}
+                        </div>
+
+                        <div>
+                          <strong>FR:</strong>{" "}
+                          {attention.respiratory_rate
+                            ? `${attention.respiratory_rate} rpm`
+                            : "-"}
+                        </div>
+
+                        <div>
+                          <strong>TA:</strong>{" "}
+                          {attention.systolic_bp && attention.diastolic_bp
+                            ? `${attention.systolic_bp}/${attention.diastolic_bp} mmHg`
+                            : "-"}
+                        </div>
+
+                        <div>
+                          <strong>Temp:</strong>{" "}
+                          {attention.temperature
+                            ? `${attention.temperature} °C`
+                            : "-"}
+                        </div>
+                      </div>
+                    </td>
+
+                    <td className="p-3">
+                      {vitalAlerts.length > 0 ? (
+                        <div className="space-y-1">
+                          {vitalAlerts.map((alert) => (
+                            <span
+                              key={alert}
+                              className="block rounded-full bg-red-100 px-2 py-1 text-xs font-bold text-red-800"
+                            >
+                              {alert}
+                            </span>
+                          ))}
+                        </div>
+                      ) : (
+                        <span className="rounded-full bg-emerald-100 px-2 py-1 text-xs font-bold text-emerald-800">
+                          Normal
+                        </span>
+                      )}
+                    </td>
+
+                    <td className="p-3">{attention.notes || "-"}</td>
+
+                    {canDelete && (
+                      <td className="p-3 text-right">
+                        <button
+                          type="button"
+                          onClick={() => deleteAttention(attention.id)}
+                          className="rounded-xl px-3 py-2 text-xs font-bold text-red-700 hover:bg-red-50"
+                        >
+                          Eliminar
+                        </button>
+                      </td>
+                    )}
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+
+          {filteredAttentions.length === 0 && (
+            <div className="mt-4">
+              <EmptyState text="No hay registros con los filtros actuales." />
+            </div>
+          )}
+        </div>
+      </section>
+    );
+  }
+
+  function renderAtenciones() {
+    return (
+      <div className="space-y-6">
+        <section className="grid grid-cols-1 gap-4 md:grid-cols-4">
+          <KpiCard label="Registros" value={filteredAttentions.length} tone="dark" />
+          <KpiCard
+            label="Alertas"
+            value={kpis.vitalAlertsCount}
+            tone={kpis.vitalAlertsCount > 0 ? "red" : "neutral"}
+          />
+          <KpiCard
+            label="Alto / crítico"
+            value={kpis.highRisk}
+            tone={kpis.highRisk > 0 ? "amber" : "neutral"}
+          />
+          <KpiCard
+            label="Promedio"
+            value={`${kpis.averageMinutes.toFixed(1)} min`}
+          />
+        </section>
+
+        {renderAttentionForm()}
+        {renderFiltersAndHistory()}
+      </div>
+    );
+  }
+
+  function renderInventory() {
+    return (
+      <div className="space-y-6">
+        <section className="grid grid-cols-1 gap-4 md:grid-cols-3">
+          <KpiCard
+            label="Medicamentos"
+            value={medicines.length}
+            helper="Catálogo activo"
+            tone="dark"
+          />
+          <KpiCard
+            label="Stock bajo"
+            value={lowStockMedicines.length}
+            helper="Requiere revisión"
+            tone={lowStockMedicines.length > 0 ? "red" : "neutral"}
+          />
+          <KpiCard
+            label="Control"
+            value={canEditInventory ? "Editable" : "Lectura"}
+            helper="Según rol activo"
+          />
+        </section>
+
+        <section className="rounded-3xl border border-zinc-200 bg-white p-6 shadow-sm">
+          <div className="mb-5">
+            <p className="text-xs font-semibold uppercase tracking-[0.25em] text-red-700">
+              Insumos
+            </p>
+            <h2 className="mt-1 text-2xl font-black tracking-tight">
+              Inventario médico
+            </h2>
+            <p className="mt-1 text-sm text-zinc-500">
+              Control visual de stock y mínimos operativos.
+            </p>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[800px] text-sm">
+              <thead>
+                <tr className="border-b bg-zinc-950 text-left text-xs uppercase tracking-wide text-white">
+                  <th className="p-3">Medicamento</th>
+                  <th className="p-3">Stock</th>
+                  <th className="p-3">Mínimo</th>
+                  <th className="p-3">Unidad</th>
+                  <th className="p-3">Estado</th>
+                </tr>
+              </thead>
+
+              <tbody>
+                {medicines.map((medicine) => {
+                  const isLow =
+                    Number(medicine.stock || 0) <= Number(medicine.minimum_stock || 0);
+
+                  return (
+                    <tr key={medicine.id} className="border-b hover:bg-zinc-50">
+                      <td className="p-3 font-bold">{medicine.name}</td>
+
+                      <td className="p-3">
+                        {canEditInventory ? (
+                          <input
+                            className="w-28 rounded-xl border border-zinc-300 px-3 py-2"
+                            type="number"
+                            min="0"
+                            value={medicine.stock}
+                            onChange={(event) =>
+                              updateStock(medicine.id, event.target.value)
+                            }
+                          />
+                        ) : (
+                          medicine.stock
+                        )}
+                      </td>
+
+                      <td className="p-3">{medicine.minimum_stock}</td>
+                      <td className="p-3">{medicine.unit}</td>
+
+                      <td className="p-3">
+                        {isLow ? (
+                          <span className="rounded-full bg-red-100 px-2 py-1 text-xs font-bold text-red-800">
+                            Bajo
+                          </span>
+                        ) : (
+                          <span className="rounded-full bg-emerald-100 px-2 py-1 text-xs font-bold text-emerald-800">
+                            Suficiente
+                          </span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+
+            {medicines.length === 0 && (
+              <div className="mt-4">
+                <EmptyState text="No hay medicamentos registrados." />
+              </div>
+            )}
+          </div>
+        </section>
+      </div>
+    );
+  }
+
+  function renderReports() {
+    return (
+      <section
+        id="reporte-mensual"
+        className="rounded-3xl border border-zinc-200 bg-white p-6 shadow-sm"
+      >
+        <div className="mb-6 flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.25em] text-red-700">
+              Vista ejecutiva
+            </p>
+            <h2 className="mt-1 text-2xl font-black tracking-tight">
+              Reporte mensual ejecutivo
+            </h2>
+            <p className="mt-1 text-sm text-zinc-500">
+              {getMonthLabel(reportMonth)} · {monthlyReport.total} atenciones
+              registradas
+            </p>
+          </div>
+
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <select
+              className="rounded-2xl border border-zinc-300 px-4 py-3 text-sm font-bold"
+              value={reportMonth}
+              onChange={(event) => setReportMonth(event.target.value)}
+            >
+              {monthOptions.map((month) => (
+                <option key={month} value={month}>
+                  {getMonthLabel(month)}
+                </option>
+              ))}
+            </select>
+
+            <button
+              type="button"
+              onClick={exportMonthlyReportToCsv}
+              className="rounded-2xl bg-zinc-950 px-4 py-3 text-sm font-bold text-white hover:bg-zinc-800"
+            >
+              Exportar CSV
+            </button>
+
+            <button
+              type="button"
+              onClick={printMonthlyReport}
+              className="rounded-2xl border border-zinc-300 px-4 py-3 text-sm font-bold text-zinc-700 hover:bg-zinc-50"
+            >
+              Imprimir / PDF
+            </button>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
+          <KpiCard label="Total" value={monthlyReport.total} tone="dark" />
+          <KpiCard
+            label="Promedio"
+            value={`${monthlyReport.averageMinutes.toFixed(1)} min`}
+          />
+          <KpiCard
+            label="Alto / crítico"
+            value={monthlyReport.highRisk}
+            tone={monthlyReport.highRisk > 0 ? "amber" : "neutral"}
+          />
+          <KpiCard
+            label="Alertas vitales"
+            value={monthlyReport.vitalAlertsCount}
+            tone={monthlyReport.vitalAlertsCount > 0 ? "red" : "neutral"}
+          />
+        </div>
+
+        <div className="mt-6 grid grid-cols-1 gap-5 lg:grid-cols-2">
+          <ReportList title="Distribución por riesgo" items={monthlyReport.riskDistribution} />
+          <ReportList title="Principales diagnósticos / motivos" items={monthlyReport.topDiagnoses} />
+          <ReportList title="Áreas con mayor demanda" items={monthlyReport.topAreas} />
+          <ReportList title="Medicamentos más utilizados" items={monthlyReport.topMedicines} />
+          <ReportList
+            title="Alertas vitales detectadas"
+            items={monthlyReport.topVitalAlerts}
+            danger
+            wide
+          />
+        </div>
+      </section>
+    );
+  }
+
+  function ReportList({ title, items, danger = false, wide = false }) {
+    return (
+      <div
+        className={`rounded-3xl border border-zinc-200 p-5 ${
+          wide ? "lg:col-span-2" : ""
+        }`}
+      >
+        <h3 className="mb-4 text-lg font-black tracking-tight">{title}</h3>
+
+        <div className="space-y-2">
+          {items.length > 0 ? (
+            items.map((item) => (
+              <div
+                key={item.label}
+                className={`flex items-center justify-between rounded-2xl px-4 py-3 text-sm ${
+                  danger ? "bg-red-50 text-red-900" : "bg-zinc-50 text-zinc-900"
+                }`}
+              >
+                <span>{item.label}</span>
+                <strong>{item.count}</strong>
+              </div>
+            ))
+          ) : (
+            <EmptyState text="Sin registros en el periodo." />
+          )}
+        </div>
+      </div>
+    );
+  }
+
   if (checkingSession) {
     return (
       <main className="flex min-h-screen items-center justify-center bg-zinc-950 text-white">
@@ -956,9 +1925,9 @@ export default function App() {
 
   if (recoveryMode) {
     return (
-      <main className="flex min-h-screen items-center justify-center bg-zinc-950 px-5">
-        <section className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
-          <h1 className="text-2xl font-bold text-zinc-950">
+      <main className="flex min-h-screen items-center justify-center bg-[radial-gradient(circle_at_top,#3f0d12,#09090b_45%)] px-5">
+        <section className="w-full max-w-md rounded-3xl border border-white/10 bg-white p-7 shadow-2xl">
+          <h1 className="text-2xl font-black text-zinc-950">
             Cambiar contraseña
           </h1>
 
@@ -967,33 +1936,25 @@ export default function App() {
           </p>
 
           <form onSubmit={updatePassword} className="mt-6 space-y-4">
-            <label className="block">
-              <span className="text-sm font-medium text-zinc-700">
-                Nueva contraseña
-              </span>
-              <input
-                className="mt-1 w-full rounded-xl border border-zinc-300 px-3 py-2"
-                type="password"
-                value={newPassword}
-                onChange={(event) => setNewPassword(event.target.value)}
-                required
-              />
-            </label>
+            <input
+              className="w-full rounded-2xl border border-zinc-300 px-4 py-3"
+              type="password"
+              placeholder="Nueva contraseña"
+              value={newPassword}
+              onChange={(event) => setNewPassword(event.target.value)}
+              required
+            />
 
-            <label className="block">
-              <span className="text-sm font-medium text-zinc-700">
-                Confirmar contraseña
-              </span>
-              <input
-                className="mt-1 w-full rounded-xl border border-zinc-300 px-3 py-2"
-                type="password"
-                value={confirmPassword}
-                onChange={(event) => setConfirmPassword(event.target.value)}
-                required
-              />
-            </label>
+            <input
+              className="w-full rounded-2xl border border-zinc-300 px-4 py-3"
+              type="password"
+              placeholder="Confirmar contraseña"
+              value={confirmPassword}
+              onChange={(event) => setConfirmPassword(event.target.value)}
+              required
+            />
 
-            <button className="w-full rounded-xl bg-red-700 px-4 py-3 font-semibold text-white hover:bg-red-800">
+            <button className="w-full rounded-2xl bg-red-700 px-4 py-3 font-black text-white hover:bg-red-800">
               Actualizar contraseña
             </button>
           </form>
@@ -1004,57 +1965,65 @@ export default function App() {
 
   if (!session) {
     return (
-      <main className="flex min-h-screen items-center justify-center bg-zinc-950 px-5">
-        <section className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
-          <h1 className="text-2xl font-bold text-zinc-950">
-            Dashboard Médico SOS
-          </h1>
-
-          <p className="mt-2 text-sm text-zinc-600">
-            Inicia sesión con tu usuario autorizado.
-          </p>
-
-          <form onSubmit={login} className="mt-6 space-y-4">
-            <label className="block">
-              <span className="text-sm font-medium text-zinc-700">
-                Correo electrónico
-              </span>
-              <input
-                className="mt-1 w-full rounded-xl border border-zinc-300 px-3 py-2"
-                type="email"
-                value={email}
-                onChange={(event) => setEmail(event.target.value)}
-                required
+      <main className="flex min-h-screen items-center justify-center bg-[radial-gradient(circle_at_top,#3f0d12,#09090b_45%)] px-5">
+        <section className="w-full max-w-md rounded-3xl border border-white/10 bg-white p-7 shadow-2xl">
+          <div className="mb-8 flex items-center gap-3">
+            {!logoFailed ? (
+              <img
+                src="/logo.png"
+                alt="SOS"
+                onError={() => setLogoFailed(true)}
+                className="h-14 w-14 rounded-2xl object-contain"
               />
-            </label>
+            ) : (
+              <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-red-700 text-xl font-black text-white">
+                SOS
+              </div>
+            )}
 
-            <label className="block">
-              <span className="text-sm font-medium text-zinc-700">
-                Contraseña
-              </span>
-              <input
-                className="mt-1 w-full rounded-xl border border-zinc-300 px-3 py-2"
-                type="password"
-                value={password}
-                onChange={(event) => setPassword(event.target.value)}
-                required
-              />
-            </label>
+            <div>
+              <h1 className="text-2xl font-black tracking-tight text-zinc-950">
+                SOS MedicalOps
+              </h1>
+              <p className="text-sm font-medium text-zinc-500">
+                Centro médico-operativo
+              </p>
+            </div>
+          </div>
 
-            <button className="w-full rounded-xl bg-red-700 px-4 py-3 font-semibold text-white hover:bg-red-800">
+          <form onSubmit={login} className="space-y-4">
+            <input
+              className="w-full rounded-2xl border border-zinc-300 px-4 py-3 outline-none ring-red-700/20 focus:ring-4"
+              type="email"
+              placeholder="Correo electrónico"
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
+              required
+            />
+
+            <input
+              className="w-full rounded-2xl border border-zinc-300 px-4 py-3 outline-none ring-red-700/20 focus:ring-4"
+              type="password"
+              placeholder="Contraseña"
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              required
+            />
+
+            <button className="w-full rounded-2xl bg-red-700 px-4 py-3 font-black text-white shadow-sm hover:bg-red-800">
               Ingresar
             </button>
 
             <button
               type="button"
               onClick={sendRecoveryEmail}
-              className="w-full rounded-xl border border-zinc-300 px-4 py-3 text-sm font-semibold text-zinc-700 hover:bg-zinc-50"
+              className="w-full rounded-2xl border border-zinc-300 px-4 py-3 text-sm font-bold text-zinc-700 hover:bg-zinc-50"
             >
               Olvidé mi contraseña
             </button>
 
             {recoveryEmailSent && (
-              <p className="text-sm font-medium text-emerald-700">
+              <p className="text-sm font-bold text-emerald-700">
                 Correo de recuperación enviado.
               </p>
             )}
@@ -1064,756 +2033,156 @@ export default function App() {
     );
   }
 
+  if (isBlocked) {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-zinc-950 px-5">
+        <section className="w-full max-w-md rounded-3xl bg-white p-7 shadow-2xl">
+          <h1 className="text-2xl font-black text-red-700">Acceso bloqueado</h1>
+          <p className="mt-2 text-sm text-zinc-600">
+            Tu usuario no tiene acceso operativo al dashboard. Contacta al
+            administrador.
+          </p>
+          <button
+            onClick={logout}
+            className="mt-6 w-full rounded-2xl bg-zinc-950 px-4 py-3 font-black text-white hover:bg-zinc-800"
+          >
+            Cerrar sesión
+          </button>
+        </section>
+      </main>
+    );
+  }
+
   return (
     <main className="min-h-screen bg-zinc-100 text-zinc-950">
-      <header className="bg-zinc-950 px-6 py-6 text-white">
-        <div className="mx-auto flex max-w-7xl flex-col gap-4 md:flex-row md:items-end md:justify-between">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.3em] text-red-500">
-              SOS · Salud ocupacional
-            </p>
+      <aside className="fixed inset-y-0 left-0 hidden w-72 border-r border-white/10 bg-zinc-950 p-5 text-white lg:block">
+        <BrandBlock />
 
-            <h1 className="mt-2 text-3xl font-bold">
-              Dashboard de Atenciones Médicas
-            </h1>
+        <nav className="space-y-2">
+          {navItems.map((item) => {
+            const active = activeModule === item.id;
 
-            <p className="mt-1 text-sm text-zinc-300">
-              Conectado a Supabase.
-            </p>
+            return (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => setActiveModule(item.id)}
+                className={`w-full rounded-2xl px-4 py-3 text-left transition ${
+                  active
+                    ? "bg-red-700 text-white shadow-sm"
+                    : "text-zinc-300 hover:bg-white/10 hover:text-white"
+                }`}
+              >
+                <span className="block font-black">{item.label}</span>
+                <span className="block text-xs opacity-70">{item.subtitle}</span>
+              </button>
+            );
+          })}
+        </nav>
 
-            <p className="mt-1 text-sm text-zinc-400">
-              Rol activo: {userRole || "cargando..."}
-            </p>
-          </div>
+        <div className="absolute bottom-5 left-5 right-5 rounded-3xl border border-white/10 bg-white/5 p-4">
+          <p className="text-xs uppercase tracking-[0.2em] text-zinc-500">
+            Usuario activo
+          </p>
+          <p className="mt-2 truncate text-sm font-bold text-white">
+            {session?.user?.email}
+          </p>
+          <span
+            className={`mt-3 inline-block rounded-full px-3 py-1 text-xs font-bold ${getRoleBadgeClass(
+              userRole
+            )}`}
+          >
+            {userRole || "cargando"}
+          </span>
 
           <button
             onClick={logout}
-            className="rounded-xl border border-zinc-700 px-4 py-2 text-sm font-semibold hover:bg-zinc-900"
+            className="mt-4 w-full rounded-2xl border border-white/10 px-4 py-2 text-sm font-bold text-zinc-300 hover:bg-white/10 hover:text-white"
           >
             Cerrar sesión
           </button>
         </div>
-      </header>
+      </aside>
 
-      <section className="mx-auto max-w-7xl space-y-6 px-6 py-6">
-        {loadingData && (
-          <div className="rounded-xl bg-amber-100 px-4 py-3 text-sm font-medium text-amber-900">
-            Cargando información desde Supabase...
-          </div>
-        )}
-
-        <section
-          id="reporte-mensual"
-          className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm"
-        >
-          <div className="mb-5 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.25em] text-red-700">
-                Vista ejecutiva
-              </p>
-              <h2 className="mt-1 text-2xl font-bold text-zinc-950">
-                Reporte mensual ejecutivo
-              </h2>
-              <p className="mt-1 text-sm text-zinc-500">
-                {getMonthLabel(reportMonth)} · {monthlyReport.total} atenciones registradas
-              </p>
-            </div>
-
-            <div className="flex flex-col gap-2 sm:flex-row">
-              <select
-                className="rounded-xl border border-zinc-300 px-3 py-2 text-sm"
-                value={reportMonth}
-                onChange={(event) => setReportMonth(event.target.value)}
-              >
-                {monthOptions.map((month) => (
-                  <option key={month} value={month}>
-                    {getMonthLabel(month)}
-                  </option>
-                ))}
-              </select>
-
-              <button
-                type="button"
-                onClick={exportMonthlyReportToCsv}
-                className="rounded-xl bg-zinc-950 px-4 py-2 text-sm font-semibold text-white hover:bg-zinc-800"
-              >
-                Exportar reporte CSV
-              </button>
-
-              <button
-                type="button"
-                onClick={printMonthlyReport}
-                className="rounded-xl border border-zinc-300 px-4 py-2 text-sm font-semibold text-zinc-700 hover:bg-zinc-50"
-              >
-                Imprimir / PDF
-              </button>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
-            <div className="rounded-2xl bg-zinc-50 p-4">
-              <p className="text-sm text-zinc-500">Total de atenciones</p>
-              <p className="mt-2 text-3xl font-bold">{monthlyReport.total}</p>
-            </div>
-
-            <div className="rounded-2xl bg-zinc-50 p-4">
-              <p className="text-sm text-zinc-500">Tiempo promedio</p>
-              <p className="mt-2 text-3xl font-bold">
-                {monthlyReport.averageMinutes.toFixed(1)} min
-              </p>
-            </div>
-
-            <div className="rounded-2xl bg-zinc-50 p-4">
-              <p className="text-sm text-zinc-500">Riesgo alto/crítico</p>
-              <p className="mt-2 text-3xl font-bold">{monthlyReport.highRisk}</p>
-            </div>
-
-            <div className="rounded-2xl bg-red-50 p-4">
-              <p className="text-sm text-red-700">Alertas vitales</p>
-              <p className="mt-2 text-3xl font-bold text-red-800">
-                {monthlyReport.vitalAlertsCount}
-              </p>
-            </div>
-          </div>
-
-          <div className="mt-6 grid grid-cols-1 gap-5 lg:grid-cols-2">
-            <div className="rounded-2xl border border-zinc-200 p-4">
-              <h3 className="mb-3 font-semibold">Distribución por riesgo</h3>
-              <div className="space-y-2">
-                {monthlyReport.riskDistribution.map((item) => (
-                  <div
-                    key={item.label}
-                    className="flex items-center justify-between rounded-xl bg-zinc-50 px-3 py-2 text-sm"
-                  >
-                    <span>{item.label}</span>
-                    <strong>{item.count}</strong>
-                  </div>
-                ))}
+      <section className="lg:pl-72">
+        <header className="sticky top-0 z-20 border-b border-zinc-200 bg-white/90 px-5 py-4 backdrop-blur">
+          <div className="mx-auto flex max-w-7xl flex-col gap-4 md:flex-row md:items-center md:justify-between">
+            <div className="flex items-center gap-4">
+              <div className="lg:hidden">
+                <BrandBlock compact />
               </div>
-            </div>
 
-            <div className="rounded-2xl border border-zinc-200 p-4">
-              <h3 className="mb-3 font-semibold">Principales diagnósticos / motivos</h3>
-              <div className="space-y-2">
-                {monthlyReport.topDiagnoses.length > 0 ? (
-                  monthlyReport.topDiagnoses.map((item) => (
-                    <div
-                      key={item.label}
-                      className="flex items-center justify-between rounded-xl bg-zinc-50 px-3 py-2 text-sm"
-                    >
-                      <span>{item.label}</span>
-                      <strong>{item.count}</strong>
-                    </div>
-                  ))
-                ) : (
-                  <p className="text-sm text-zinc-500">Sin registros.</p>
-                )}
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.25em] text-red-700">
+                  SOS MedicalOps
+                </p>
+                <h1 className="mt-1 text-2xl font-black tracking-tight">
+                  {currentModule?.label || "Dashboard"}
+                </h1>
+                <p className="text-sm text-zinc-500">
+                  {currentModule?.subtitle || "Centro de control médico-operativo"}
+                </p>
               </div>
-            </div>
-
-            <div className="rounded-2xl border border-zinc-200 p-4">
-              <h3 className="mb-3 font-semibold">Áreas con mayor demanda</h3>
-              <div className="space-y-2">
-                {monthlyReport.topAreas.length > 0 ? (
-                  monthlyReport.topAreas.map((item) => (
-                    <div
-                      key={item.label}
-                      className="flex items-center justify-between rounded-xl bg-zinc-50 px-3 py-2 text-sm"
-                    >
-                      <span>{item.label}</span>
-                      <strong>{item.count}</strong>
-                    </div>
-                  ))
-                ) : (
-                  <p className="text-sm text-zinc-500">Sin registros.</p>
-                )}
-              </div>
-            </div>
-
-            <div className="rounded-2xl border border-zinc-200 p-4">
-              <h3 className="mb-3 font-semibold">Medicamentos más utilizados</h3>
-              <div className="space-y-2">
-                {monthlyReport.topMedicines.length > 0 ? (
-                  monthlyReport.topMedicines.map((item) => (
-                    <div
-                      key={item.label}
-                      className="flex items-center justify-between rounded-xl bg-zinc-50 px-3 py-2 text-sm"
-                    >
-                      <span>{item.label}</span>
-                      <strong>{item.count}</strong>
-                    </div>
-                  ))
-                ) : (
-                  <p className="text-sm text-zinc-500">Sin consumo registrado.</p>
-                )}
-              </div>
-            </div>
-
-            <div className="rounded-2xl border border-zinc-200 p-4 lg:col-span-2">
-              <h3 className="mb-3 font-semibold">Alertas vitales detectadas</h3>
-              <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
-                {monthlyReport.topVitalAlerts.length > 0 ? (
-                  monthlyReport.topVitalAlerts.map((item) => (
-                    <div
-                      key={item.label}
-                      className="flex items-center justify-between rounded-xl bg-red-50 px-3 py-2 text-sm text-red-900"
-                    >
-                      <span>{item.label}</span>
-                      <strong>{item.count}</strong>
-                    </div>
-                  ))
-                ) : (
-                  <p className="text-sm text-zinc-500">Sin alertas vitales en el periodo.</p>
-                )}
-              </div>
-            </div>
-          </div>
-        </section>
-
-        <section className="rounded-2xl bg-white p-5 shadow-sm">
-          <div className="mb-4 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-            <div>
-              <h2 className="text-lg font-semibold">Filtros y exportación</h2>
-              <p className="text-sm text-zinc-500">
-                Registros filtrados: {filteredAttentions.length}
-              </p>
             </div>
 
             <div className="flex flex-col gap-2 sm:flex-row">
               <button
                 type="button"
-                onClick={resetFilters}
-                className="rounded-xl border border-zinc-300 px-4 py-2 text-sm font-semibold text-zinc-700 hover:bg-zinc-50"
+                onClick={() => setActiveModule("atenciones")}
+                className="rounded-2xl bg-red-700 px-4 py-3 text-sm font-black text-white hover:bg-red-800"
               >
-                Limpiar filtros
+                + Nueva atención
               </button>
 
               <button
                 type="button"
-                onClick={exportFilteredToCsv}
-                className="rounded-xl bg-zinc-950 px-4 py-2 text-sm font-semibold text-white hover:bg-zinc-800"
+                onClick={loadData}
+                className="rounded-2xl border border-zinc-300 px-4 py-3 text-sm font-bold text-zinc-700 hover:bg-zinc-50"
               >
-                Exportar Excel CSV
+                Actualizar
               </button>
             </div>
           </div>
 
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-3 xl:grid-cols-6">
-            <label className="block">
-              <span className="mb-1 block text-sm font-medium text-zinc-700">
-                Fecha inicial
-              </span>
-              <input
-                className="w-full rounded-xl border border-zinc-300 px-3 py-2"
-                type="date"
-                value={filters.startDate}
-                onChange={(event) =>
-                  updateFilter("startDate", event.target.value)
-                }
-              />
-            </label>
-
-            <label className="block">
-              <span className="mb-1 block text-sm font-medium text-zinc-700">
-                Fecha final
-              </span>
-              <input
-                className="w-full rounded-xl border border-zinc-300 px-3 py-2"
-                type="date"
-                value={filters.endDate}
-                onChange={(event) =>
-                  updateFilter("endDate", event.target.value)
-                }
-              />
-            </label>
-
-            <label className="block">
-              <span className="mb-1 block text-sm font-medium text-zinc-700">
-                Riesgo
-              </span>
-              <select
-                className="w-full rounded-xl border border-zinc-300 px-3 py-2"
-                value={filters.riskLevel}
-                onChange={(event) =>
-                  updateFilter("riskLevel", event.target.value)
-                }
+          <div className="mx-auto mt-4 flex max-w-7xl gap-2 overflow-x-auto lg:hidden">
+            {navItems.map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => setActiveModule(item.id)}
+                className={`whitespace-nowrap rounded-full px-4 py-2 text-sm font-bold ${
+                  activeModule === item.id
+                    ? "bg-zinc-950 text-white"
+                    : "bg-zinc-100 text-zinc-700"
+                }`}
               >
-                <option value="Todos">Todos</option>
-                {riskLevels.map((risk) => (
-                  <option key={risk} value={risk}>
-                    {risk}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            <label className="block">
-              <span className="mb-1 block text-sm font-medium text-zinc-700">
-                Área
-              </span>
-              <select
-                className="w-full rounded-xl border border-zinc-300 px-3 py-2"
-                value={filters.area}
-                onChange={(event) => updateFilter("area", event.target.value)}
-              >
-                {uniqueAreas.map((area) => (
-                  <option key={area} value={area}>
-                    {area}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            <label className="block">
-              <span className="mb-1 block text-sm font-medium text-zinc-700">
-                No. empleado
-              </span>
-              <input
-                className="w-full rounded-xl border border-zinc-300 px-3 py-2"
-                placeholder="Buscar empleado"
-                value={filters.employeeNumber}
-                onChange={(event) =>
-                  updateFilter("employeeNumber", event.target.value)
-                }
-              />
-            </label>
-
-            <label className="block">
-              <span className="mb-1 block text-sm font-medium text-zinc-700">
-                Búsqueda general
-              </span>
-              <input
-                className="w-full rounded-xl border border-zinc-300 px-3 py-2"
-                placeholder="Paciente, diagnóstico, notas..."
-                value={filters.searchText}
-                onChange={(event) =>
-                  updateFilter("searchText", event.target.value)
-                }
-              />
-            </label>
-          </div>
-
-          <label className="mt-4 flex items-center gap-2 text-sm font-medium text-zinc-700">
-            <input
-              type="checkbox"
-              checked={filters.onlyVitalAlerts}
-              onChange={(event) =>
-                updateFilter("onlyVitalAlerts", event.target.checked)
-              }
-            />
-            Mostrar solo atenciones con alertas vitales
-          </label>
-        </section>
-
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-5">
-          <div className="rounded-2xl bg-white p-5 shadow-sm">
-            <p className="text-sm text-zinc-500">Atenciones</p>
-            <p className="mt-2 text-3xl font-bold">{kpis.total}</p>
-          </div>
-
-          <div className="rounded-2xl bg-white p-5 shadow-sm">
-            <p className="text-sm text-zinc-500">Medicamentos</p>
-            <p className="mt-2 text-3xl font-bold">{kpis.medicinesCount}</p>
-          </div>
-
-          <div className="rounded-2xl bg-white p-5 shadow-sm">
-            <p className="text-sm text-zinc-500">Riesgo alto/crítico</p>
-            <p className="mt-2 text-3xl font-bold">{kpis.highRisk}</p>
-          </div>
-
-          <div className="rounded-2xl bg-white p-5 shadow-sm">
-            <p className="text-sm text-zinc-500">Tiempo promedio</p>
-            <p className="mt-2 text-3xl font-bold">
-              {kpis.averageMinutes.toFixed(1)} min
-            </p>
-          </div>
-
-          <div className="rounded-2xl bg-white p-5 shadow-sm">
-            <p className="text-sm text-zinc-500">Alertas vitales</p>
-            <p className="mt-2 text-3xl font-bold text-red-700">
-              {kpis.vitalAlertsCount}
-            </p>
-          </div>
-        </div>
-
-        {canRegisterAttention ? (
-          <section className="rounded-2xl bg-white p-5 shadow-sm">
-            <h2 className="mb-4 text-lg font-semibold">
-              Registrar atención médica
-            </h2>
-
-            <form
-              onSubmit={saveAttention}
-              className="grid grid-cols-1 gap-4 md:grid-cols-3"
-            >
-              <input
-                className="rounded-xl border border-zinc-300 px-3 py-2"
-                placeholder="Nombre del paciente"
-                value={form.patient_name}
-                onChange={(event) =>
-                  updateField("patient_name", event.target.value)
-                }
-              />
-
-              <input
-                className="rounded-xl border border-zinc-300 px-3 py-2"
-                placeholder="Número de empleado"
-                value={form.employee_number}
-                onChange={(event) =>
-                  updateField("employee_number", event.target.value)
-                }
-              />
-
-              <input
-                className="rounded-xl border border-zinc-300 px-3 py-2"
-                type="date"
-                value={form.attention_date}
-                onChange={(event) =>
-                  updateField("attention_date", event.target.value)
-                }
-              />
-
-              <input
-                className="rounded-xl border border-zinc-300 px-3 py-2"
-                placeholder="Área"
-                value={form.area}
-                onChange={(event) => updateField("area", event.target.value)}
-              />
-
-              <input
-                className="rounded-xl border border-zinc-300 px-3 py-2"
-                placeholder="Diagnóstico / motivo"
-                value={form.diagnosis}
-                onChange={(event) =>
-                  updateField("diagnosis", event.target.value)
-                }
-              />
-
-              <select
-                className="rounded-xl border border-zinc-300 px-3 py-2"
-                value={form.risk_level}
-                onChange={(event) =>
-                  updateField("risk_level", event.target.value)
-                }
-              >
-                {riskLevels.map((risk) => (
-                  <option key={risk} value={risk}>
-                    {risk}
-                  </option>
-                ))}
-              </select>
-
-              <input
-                className="rounded-xl border border-zinc-300 px-3 py-2"
-                type="number"
-                min="0"
-                placeholder="Tiempo en minutos"
-                value={form.attention_minutes}
-                onChange={(event) =>
-                  updateField("attention_minutes", event.target.value)
-                }
-              />
-
-              <select
-                className="rounded-xl border border-zinc-300 px-3 py-2"
-                value={form.medicine_id}
-                onChange={(event) =>
-                  updateField("medicine_id", event.target.value)
-                }
-              >
-                <option value="">Sin medicamento</option>
-                {medicines.map((medicine) => (
-                  <option key={medicine.id} value={medicine.id}>
-                    {medicine.name} | stock: {medicine.stock}
-                  </option>
-                ))}
-              </select>
-
-              <input
-                className="rounded-xl border border-zinc-300 px-3 py-2"
-                type="number"
-                min="0"
-                placeholder="Cantidad medicamento"
-                value={form.medicine_quantity}
-                onChange={(event) =>
-                  updateField("medicine_quantity", event.target.value)
-                }
-              />
-
-              <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4 md:col-span-3">
-                <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-zinc-600">
-                  Signos vitales
-                </h3>
-
-                <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
-                  <label className="block">
-                    <span className="mb-1 block text-sm font-medium text-zinc-700">
-                      Frecuencia cardiaca
-                    </span>
-                    <input
-                      className="w-full rounded-xl border border-zinc-300 px-3 py-2"
-                      type="number"
-                      min="20"
-                      max="250"
-                      placeholder="Ej. 82"
-                      value={form.heart_rate}
-                      onChange={(event) =>
-                        updateField("heart_rate", event.target.value)
-                      }
-                    />
-                    <span className="mt-1 block text-xs text-zinc-500">
-                      Latidos por minuto
-                    </span>
-                  </label>
-
-                  <label className="block">
-                    <span className="mb-1 block text-sm font-medium text-zinc-700">
-                      Frecuencia respiratoria
-                    </span>
-                    <input
-                      className="w-full rounded-xl border border-zinc-300 px-3 py-2"
-                      type="number"
-                      min="5"
-                      max="80"
-                      placeholder="Ej. 18"
-                      value={form.respiratory_rate}
-                      onChange={(event) =>
-                        updateField("respiratory_rate", event.target.value)
-                      }
-                    />
-                    <span className="mt-1 block text-xs text-zinc-500">
-                      Respiraciones por minuto
-                    </span>
-                  </label>
-
-                  <label className="block">
-                    <span className="mb-1 block text-sm font-medium text-zinc-700">
-                      Tensión arterial
-                    </span>
-                    <input
-                      className="w-full rounded-xl border border-zinc-300 px-3 py-2"
-                      type="text"
-                      inputMode="numeric"
-                      placeholder="Ej. 120/80"
-                      value={form.blood_pressure}
-                      onChange={(event) =>
-                        updateField(
-                          "blood_pressure",
-                          formatBloodPressureInput(event.target.value)
-                        )
-                      }
-                    />
-                    <span className="mt-1 block text-xs text-zinc-500">
-                      Formato automático: sistólica/diastólica mmHg
-                    </span>
-                  </label>
-
-                  <label className="block">
-                    <span className="mb-1 block text-sm font-medium text-zinc-700">
-                      Temperatura
-                    </span>
-                    <input
-                      className="w-full rounded-xl border border-zinc-300 px-3 py-2"
-                      type="number"
-                      min="30"
-                      max="45"
-                      step="0.1"
-                      placeholder="Ej. 36.7"
-                      value={form.temperature}
-                      onChange={(event) =>
-                        updateField("temperature", event.target.value)
-                      }
-                    />
-                    <span className="mt-1 block text-xs text-zinc-500">
-                      Grados Celsius
-                    </span>
-                  </label>
-                </div>
-              </div>
-
-              <textarea
-                className="rounded-xl border border-zinc-300 px-3 py-2 md:col-span-3"
-                placeholder="Notas"
-                value={form.notes}
-                onChange={(event) => updateField("notes", event.target.value)}
-              />
-
-              <button className="rounded-xl bg-red-700 px-5 py-3 font-semibold text-white hover:bg-red-800 md:col-span-3">
-                Guardar atención
+                {item.label}
               </button>
-            </form>
-          </section>
-        ) : (
-          <section className="rounded-2xl bg-white p-5 shadow-sm">
-            <p className="text-sm text-zinc-600">
-              Tu rol actual no permite registrar atenciones.
-            </p>
-          </section>
-        )}
-
-        <section className="rounded-2xl bg-white p-5 shadow-sm">
-          <h2 className="mb-4 text-lg font-semibold">Inventario</h2>
-
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[700px] text-sm">
-              <thead>
-                <tr className="border-b bg-zinc-50 text-left text-xs uppercase text-zinc-500">
-                  <th className="p-3">Medicamento</th>
-                  <th className="p-3">Stock</th>
-                  <th className="p-3">Mínimo</th>
-                  <th className="p-3">Unidad</th>
-                </tr>
-              </thead>
-
-              <tbody>
-                {medicines.map((medicine) => (
-                  <tr key={medicine.id} className="border-b">
-                    <td className="p-3 font-medium">{medicine.name}</td>
-
-                    <td className="p-3">
-                      {canEditInventory ? (
-                        <input
-                          className="w-24 rounded-lg border border-zinc-300 px-2 py-1"
-                          type="number"
-                          min="0"
-                          value={medicine.stock}
-                          onChange={(event) =>
-                            updateStock(medicine.id, event.target.value)
-                          }
-                        />
-                      ) : (
-                        medicine.stock
-                      )}
-                    </td>
-
-                    <td className="p-3">{medicine.minimum_stock}</td>
-                    <td className="p-3">{medicine.unit}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            ))}
           </div>
-        </section>
+        </header>
 
-        <section className="rounded-2xl bg-white p-5 shadow-sm">
-          <h2 className="mb-4 text-lg font-semibold">
-            Historial de atenciones
-          </h2>
+        <main className="mx-auto max-w-7xl space-y-6 px-5 py-6">
+          {loadingData && (
+            <div className="rounded-2xl bg-amber-100 px-4 py-3 text-sm font-bold text-amber-900">
+              Cargando información desde Supabase...
+            </div>
+          )}
 
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[1200px] text-sm">
-              <thead>
-                <tr className="border-b bg-zinc-50 text-left text-xs uppercase text-zinc-500">
-                  <th className="p-3">Fecha</th>
-                  <th className="p-3">Paciente</th>
-                  <th className="p-3">Empleado</th>
-                  <th className="p-3">Área</th>
-                  <th className="p-3">Diagnóstico</th>
-                  <th className="p-3">Riesgo</th>
-                  <th className="p-3">Tiempo</th>
-                  <th className="p-3">Signos vitales</th>
-                  <th className="p-3">Alerta</th>
-                  <th className="p-3">Notas</th>
-                  {canDelete && <th className="p-3 text-right">Acciones</th>}
-                </tr>
-              </thead>
-
-              <tbody>
-                {filteredAttentions.map((attention) => {
-                  const vitalAlerts = evaluateVitalAlerts({
-                    heart_rate: attention.heart_rate,
-                    respiratory_rate: attention.respiratory_rate,
-                    systolic_bp: attention.systolic_bp,
-                    diastolic_bp: attention.diastolic_bp,
-                    temperature: attention.temperature,
-                  });
-
-                  return (
-                    <tr key={attention.id} className="border-b align-top">
-                      <td className="p-3">{attention.attention_date}</td>
-
-                      <td className="p-3 font-medium">
-                        {attention.patient_name}
-                      </td>
-
-                      <td className="p-3">{attention.employee_number}</td>
-                      <td className="p-3">{attention.area || "-"}</td>
-                      <td className="p-3">{attention.diagnosis || "-"}</td>
-                      <td className="p-3">{attention.risk_level}</td>
-                      <td className="p-3">{attention.attention_minutes} min</td>
-
-                      <td className="p-3">
-                        <div className="space-y-1 text-xs text-zinc-700">
-                          <div>
-                            <span className="font-semibold">FC:</span>{" "}
-                            {attention.heart_rate
-                              ? `${attention.heart_rate} lpm`
-                              : "-"}
-                          </div>
-
-                          <div>
-                            <span className="font-semibold">FR:</span>{" "}
-                            {attention.respiratory_rate
-                              ? `${attention.respiratory_rate} rpm`
-                              : "-"}
-                          </div>
-
-                          <div>
-                            <span className="font-semibold">TA:</span>{" "}
-                            {attention.systolic_bp && attention.diastolic_bp
-                              ? `${attention.systolic_bp}/${attention.diastolic_bp} mmHg`
-                              : "-"}
-                          </div>
-
-                          <div>
-                            <span className="font-semibold">Temp:</span>{" "}
-                            {attention.temperature
-                              ? `${attention.temperature} °C`
-                              : "-"}
-                          </div>
-                        </div>
-                      </td>
-
-                      <td className="p-3">
-                        {vitalAlerts.length > 0 ? (
-                          <div className="space-y-1">
-                            {vitalAlerts.map((alert) => (
-                              <span
-                                key={alert}
-                                className="block rounded-full bg-red-100 px-2 py-1 text-xs font-semibold text-red-800"
-                              >
-                                {alert}
-                              </span>
-                            ))}
-                          </div>
-                        ) : (
-                          <span className="rounded-full bg-emerald-100 px-2 py-1 text-xs font-semibold text-emerald-800">
-                            Sin alerta
-                          </span>
-                        )}
-                      </td>
-
-                      <td className="p-3">{attention.notes || "-"}</td>
-
-                      {canDelete && (
-                        <td className="p-3 text-right">
-                          <button
-                            type="button"
-                            onClick={() => deleteAttention(attention.id)}
-                            className="rounded-lg px-3 py-1 text-xs font-semibold text-red-700 hover:bg-red-50"
-                          >
-                            Eliminar
-                          </button>
-                        </td>
-                      )}
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </section>
+          {activeModule === "dashboard" && renderDashboard()}
+          {activeModule === "atenciones" && renderAtenciones()}
+          {activeModule === "inventario" && renderInventory()}
+          {activeModule === "reportes" && renderReports()}
+        </main>
       </section>
+
+      <button
+        type="button"
+        onClick={() => setActiveModule("atenciones")}
+        className="fixed bottom-5 right-5 rounded-full bg-red-700 px-5 py-4 text-sm font-black text-white shadow-2xl shadow-red-900/30 hover:bg-red-800"
+      >
+        + Atención
+      </button>
     </main>
   );
 }
