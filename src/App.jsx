@@ -250,6 +250,7 @@ export default function App() {
     riskLevel: "Todos",
     area: "Todas",
     employeeNumber: "",
+    capturedBy: "",
     searchText: "",
     onlyVitalAlerts: false,
   });
@@ -340,6 +341,15 @@ export default function App() {
         return false;
       }
 
+      if (
+        filters.capturedBy.trim() &&
+        !String(attention.created_by_email || "")
+          .toLowerCase()
+          .includes(filters.capturedBy.trim().toLowerCase())
+      ) {
+        return false;
+      }
+
       if (filters.searchText.trim()) {
         const searchBase = [
           attention.patient_name,
@@ -348,6 +358,7 @@ export default function App() {
           attention.diagnosis,
           attention.risk_level,
           attention.notes,
+          attention.created_by_email,
         ]
           .filter(Boolean)
           .join(" ")
@@ -407,7 +418,8 @@ export default function App() {
     }).length;
 
     const lowStock = medicines.filter(
-      (medicine) => Number(medicine.stock || 0) <= Number(medicine.minimum_stock || 0)
+      (medicine) =>
+        Number(medicine.stock || 0) <= Number(medicine.minimum_stock || 0)
     ).length;
 
     return {
@@ -476,6 +488,12 @@ export default function App() {
 
     const topAreas = buildCountList(monthlyAttentions, (item) => item.area, 5);
 
+    const topCapturers = buildCountList(
+      monthlyAttentions,
+      (item) => item.created_by_email,
+      5
+    );
+
     const alertsBreakdown = {};
 
     monthlyAttentions.forEach((attention) => {
@@ -506,6 +524,7 @@ export default function App() {
       topMedicines,
       topDiagnoses,
       topAreas,
+      topCapturers,
       topVitalAlerts,
     };
   }, [monthlyAttentions, medicines]);
@@ -528,7 +547,8 @@ export default function App() {
 
   const lowStockMedicines = useMemo(() => {
     return medicines.filter(
-      (medicine) => Number(medicine.stock || 0) <= Number(medicine.minimum_stock || 0)
+      (medicine) =>
+        Number(medicine.stock || 0) <= Number(medicine.minimum_stock || 0)
     );
   }, [medicines]);
 
@@ -687,6 +707,7 @@ export default function App() {
       riskLevel: "Todos",
       area: "Todas",
       employeeNumber: "",
+      capturedBy: "",
       searchText: "",
       onlyVitalAlerts: false,
     });
@@ -706,6 +727,7 @@ export default function App() {
       "Diagnostico/Motivo",
       "Riesgo",
       "Tiempo de atencion min",
+      "Capturo",
       "Medicamento",
       "Cantidad medicamento",
       "FC lpm",
@@ -740,6 +762,7 @@ export default function App() {
         attention.diagnosis,
         attention.risk_level,
         attention.attention_minutes,
+        attention.created_by_email || "Sin registro",
         medicine?.name || "",
         attention.medicine_quantity || "",
         attention.heart_rate || "",
@@ -789,6 +812,11 @@ export default function App() {
       item.count,
     ]);
 
+    const capturerRows = monthlyReport.topCapturers.map((item) => [
+      `Capturista: ${item.label}`,
+      item.count,
+    ]);
+
     const medicineRows = monthlyReport.topMedicines.map((item) => [
       `Medicamento: ${item.label}`,
       item.count,
@@ -807,6 +835,7 @@ export default function App() {
       "Diagnostico/Motivo",
       "Riesgo",
       "Tiempo min",
+      "Capturo",
       "FC",
       "FR",
       "TA",
@@ -832,6 +861,7 @@ export default function App() {
         attention.diagnosis || "",
         attention.risk_level || "",
         attention.attention_minutes || "",
+        attention.created_by_email || "Sin registro",
         attention.heart_rate || "",
         attention.respiratory_rate || "",
         attention.systolic_bp && attention.diastolic_bp
@@ -851,6 +881,8 @@ export default function App() {
       ...diagnosisRows,
       [""],
       ...areaRows,
+      [""],
+      ...capturerRows,
       [""],
       ...medicineRows,
       [""],
@@ -954,6 +986,8 @@ export default function App() {
       diastolic_bp: diastolicBp,
       temperature: form.temperature === "" ? null : Number(form.temperature),
       notes: form.notes.trim() || null,
+      created_by_user_id: session?.user?.id || null,
+      created_by_email: session?.user?.email || "Sin correo",
     };
 
     const { data, error } = await supabase
@@ -1141,7 +1175,7 @@ export default function App() {
                 </p>
                 <p className="mt-2 text-lg font-bold">Trazabilidad</p>
                 <p className="mt-2 text-sm text-zinc-500">
-                  Historial consultable, filtros y exportación.
+                  Historial, capturista, filtros y exportación.
                 </p>
               </div>
 
@@ -1174,6 +1208,9 @@ export default function App() {
                         </p>
                         <p className="text-xs text-red-800">
                           {attention.attention_date} · {attention.area || "Sin área"}
+                        </p>
+                        <p className="mt-1 text-xs text-red-700">
+                          Capturó: {attention.created_by_email || "Sin registro"}
                         </p>
                       </div>
                       <span className="rounded-full bg-red-700 px-2 py-1 text-xs font-bold text-white">
@@ -1425,6 +1462,11 @@ export default function App() {
               onChange={(event) => updateField("notes", event.target.value)}
             />
 
+            <div className="rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-600 md:col-span-3">
+              Esta atención se guardará como capturada por:{" "}
+              <strong>{session?.user?.email || "usuario actual"}</strong>
+            </div>
+
             <button className="rounded-2xl bg-red-700 px-5 py-4 font-black text-white shadow-sm hover:bg-red-800 md:col-span-3">
               Guardar atención médica
             </button>
@@ -1471,7 +1513,7 @@ export default function App() {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-3 xl:grid-cols-6">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-3 xl:grid-cols-7">
           <input
             className="rounded-2xl border border-zinc-300 px-4 py-3"
             type="date"
@@ -1522,6 +1564,13 @@ export default function App() {
 
           <input
             className="rounded-2xl border border-zinc-300 px-4 py-3"
+            placeholder="Capturó"
+            value={filters.capturedBy}
+            onChange={(event) => updateFilter("capturedBy", event.target.value)}
+          />
+
+          <input
+            className="rounded-2xl border border-zinc-300 px-4 py-3"
             placeholder="Buscar"
             value={filters.searchText}
             onChange={(event) => updateFilter("searchText", event.target.value)}
@@ -1540,7 +1589,7 @@ export default function App() {
         </label>
 
         <div className="mt-6 overflow-x-auto">
-          <table className="w-full min-w-[1200px] text-sm">
+          <table className="w-full min-w-[1350px] text-sm">
             <thead>
               <tr className="border-b bg-zinc-950 text-left text-xs uppercase tracking-wide text-white">
                 <th className="p-3">Fecha</th>
@@ -1550,6 +1599,7 @@ export default function App() {
                 <th className="p-3">Diagnóstico</th>
                 <th className="p-3">Riesgo</th>
                 <th className="p-3">Tiempo</th>
+                <th className="p-3">Capturó</th>
                 <th className="p-3">Signos vitales</th>
                 <th className="p-3">Alerta</th>
                 <th className="p-3">Notas</th>
@@ -1568,7 +1618,10 @@ export default function App() {
                 });
 
                 return (
-                  <tr key={attention.id} className="border-b align-top hover:bg-zinc-50">
+                  <tr
+                    key={attention.id}
+                    className="border-b align-top hover:bg-zinc-50"
+                  >
                     <td className="p-3">{attention.attention_date}</td>
 
                     <td className="p-3 font-bold">{attention.patient_name}</td>
@@ -1588,6 +1641,12 @@ export default function App() {
                     </td>
 
                     <td className="p-3">{attention.attention_minutes} min</td>
+
+                    <td className="p-3">
+                      <span className="rounded-full bg-zinc-100 px-2 py-1 text-xs font-bold text-zinc-700">
+                        {attention.created_by_email || "Sin registro"}
+                      </span>
+                    </td>
 
                     <td className="p-3">
                       <div className="space-y-1 text-xs text-zinc-700">
@@ -1673,7 +1732,11 @@ export default function App() {
     return (
       <div className="space-y-6">
         <section className="grid grid-cols-1 gap-4 md:grid-cols-4">
-          <KpiCard label="Registros" value={filteredAttentions.length} tone="dark" />
+          <KpiCard
+            label="Registros"
+            value={filteredAttentions.length}
+            tone="dark"
+          />
           <KpiCard
             label="Alertas"
             value={kpis.vitalAlertsCount}
@@ -1747,7 +1810,8 @@ export default function App() {
               <tbody>
                 {medicines.map((medicine) => {
                   const isLow =
-                    Number(medicine.stock || 0) <= Number(medicine.minimum_stock || 0);
+                    Number(medicine.stock || 0) <=
+                    Number(medicine.minimum_stock || 0);
 
                   return (
                     <tr key={medicine.id} className="border-b hover:bg-zinc-50">
@@ -1796,6 +1860,36 @@ export default function App() {
             )}
           </div>
         </section>
+      </div>
+    );
+  }
+
+  function ReportList({ title, items, danger = false, wide = false }) {
+    return (
+      <div
+        className={`rounded-3xl border border-zinc-200 p-5 ${
+          wide ? "lg:col-span-2" : ""
+        }`}
+      >
+        <h3 className="mb-4 text-lg font-black tracking-tight">{title}</h3>
+
+        <div className="space-y-2">
+          {items.length > 0 ? (
+            items.map((item) => (
+              <div
+                key={item.label}
+                className={`flex items-center justify-between rounded-2xl px-4 py-3 text-sm ${
+                  danger ? "bg-red-50 text-red-900" : "bg-zinc-50 text-zinc-900"
+                }`}
+              >
+                <span>{item.label}</span>
+                <strong>{item.count}</strong>
+              </div>
+            ))
+          ) : (
+            <EmptyState text="Sin registros en el periodo." />
+          )}
+        </div>
       </div>
     );
   }
@@ -1870,48 +1964,33 @@ export default function App() {
         </div>
 
         <div className="mt-6 grid grid-cols-1 gap-5 lg:grid-cols-2">
-          <ReportList title="Distribución por riesgo" items={monthlyReport.riskDistribution} />
-          <ReportList title="Principales diagnósticos / motivos" items={monthlyReport.topDiagnoses} />
-          <ReportList title="Áreas con mayor demanda" items={monthlyReport.topAreas} />
-          <ReportList title="Medicamentos más utilizados" items={monthlyReport.topMedicines} />
+          <ReportList
+            title="Distribución por riesgo"
+            items={monthlyReport.riskDistribution}
+          />
+          <ReportList
+            title="Principales diagnósticos / motivos"
+            items={monthlyReport.topDiagnoses}
+          />
+          <ReportList
+            title="Áreas con mayor demanda"
+            items={monthlyReport.topAreas}
+          />
+          <ReportList
+            title="Capturistas con mayor actividad"
+            items={monthlyReport.topCapturers}
+          />
+          <ReportList
+            title="Medicamentos más utilizados"
+            items={monthlyReport.topMedicines}
+          />
           <ReportList
             title="Alertas vitales detectadas"
             items={monthlyReport.topVitalAlerts}
             danger
-            wide
           />
         </div>
       </section>
-    );
-  }
-
-  function ReportList({ title, items, danger = false, wide = false }) {
-    return (
-      <div
-        className={`rounded-3xl border border-zinc-200 p-5 ${
-          wide ? "lg:col-span-2" : ""
-        }`}
-      >
-        <h3 className="mb-4 text-lg font-black tracking-tight">{title}</h3>
-
-        <div className="space-y-2">
-          {items.length > 0 ? (
-            items.map((item) => (
-              <div
-                key={item.label}
-                className={`flex items-center justify-between rounded-2xl px-4 py-3 text-sm ${
-                  danger ? "bg-red-50 text-red-900" : "bg-zinc-50 text-zinc-900"
-                }`}
-              >
-                <span>{item.label}</span>
-                <strong>{item.count}</strong>
-              </div>
-            ))
-          ) : (
-            <EmptyState text="Sin registros en el periodo." />
-          )}
-        </div>
-      </div>
     );
   }
 
@@ -2120,7 +2199,8 @@ export default function App() {
                   {currentModule?.label || "Dashboard"}
                 </h1>
                 <p className="text-sm text-zinc-500">
-                  {currentModule?.subtitle || "Centro de control médico-operativo"}
+                  {currentModule?.subtitle ||
+                    "Centro de control médico-operativo"}
                 </p>
               </div>
             </div>
