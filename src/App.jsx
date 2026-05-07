@@ -1,20 +1,28 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { supabase } from "./lib/supabaseClient";
 
-const initialForm = {
-  patient_name: "",
-  employee_number: "",
-  attention_date: new Date().toISOString().slice(0, 10),
-  area: "",
-  diagnosis: "",
-  risk_level: "Bajo",
-  attention_minutes: 15,
-  medicine_id: "",
-  medicine_quantity: 0,
-  notes: "",
-};
-
 const riskLevels = ["Bajo", "Medio", "Alto", "Crítico"];
+
+function createInitialForm() {
+  return {
+    patient_name: "",
+    employee_number: "",
+    attention_date: new Date().toISOString().slice(0, 10),
+    area: "",
+    diagnosis: "",
+    risk_level: "Bajo",
+    attention_minutes: 15,
+    medicine_id: "",
+    medicine_quantity: 0,
+
+    heart_rate: "",
+    respiratory_rate: "",
+    blood_pressure: "",
+    temperature: "",
+
+    notes: "",
+  };
+}
 
 export default function App() {
   const [session, setSession] = useState(null);
@@ -32,7 +40,7 @@ export default function App() {
   const [userRole, setUserRole] = useState(null);
   const [medicines, setMedicines] = useState([]);
   const [attentions, setAttentions] = useState([]);
-  const [form, setForm] = useState(initialForm);
+  const [form, setForm] = useState(createInitialForm());
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
@@ -73,6 +81,7 @@ export default function App() {
 
   const kpis = useMemo(() => {
     const total = attentions.length;
+
     const highRisk = attentions.filter((item) =>
       ["Alto", "Crítico"].includes(item.risk_level)
     ).length;
@@ -242,6 +251,33 @@ export default function App() {
       return;
     }
 
+    let systolicBp = null;
+    let diastolicBp = null;
+
+    if (form.blood_pressure.trim()) {
+      const bpParts = form.blood_pressure.trim().split("/");
+
+      if (bpParts.length !== 2) {
+        alert("Captura la tensión arterial en formato 120/80.");
+        return;
+      }
+
+      systolicBp = Number(bpParts[0]);
+      diastolicBp = Number(bpParts[1]);
+
+      if (
+        Number.isNaN(systolicBp) ||
+        Number.isNaN(diastolicBp) ||
+        systolicBp < 50 ||
+        systolicBp > 300 ||
+        diastolicBp < 20 ||
+        diastolicBp > 200
+      ) {
+        alert("La tensión arterial debe tener un formato válido, ejemplo: 120/80.");
+        return;
+      }
+    }
+
     const payload = {
       patient_name: form.patient_name.trim(),
       employee_number: form.employee_number.trim(),
@@ -252,6 +288,14 @@ export default function App() {
       attention_minutes: Number(form.attention_minutes || 0),
       medicine_id: form.medicine_id || null,
       medicine_quantity: Number(form.medicine_quantity || 0),
+
+      heart_rate: form.heart_rate === "" ? null : Number(form.heart_rate),
+      respiratory_rate:
+        form.respiratory_rate === "" ? null : Number(form.respiratory_rate),
+      systolic_bp: systolicBp,
+      diastolic_bp: diastolicBp,
+      temperature: form.temperature === "" ? null : Number(form.temperature),
+
       notes: form.notes.trim() || null,
     };
 
@@ -268,6 +312,7 @@ export default function App() {
 
     if (payload.medicine_id && payload.medicine_quantity > 0) {
       const medicine = medicines.find((item) => item.id === payload.medicine_id);
+
       const newStock = Math.max(
         Number(medicine?.stock || 0) - payload.medicine_quantity,
         0
@@ -287,7 +332,7 @@ export default function App() {
     }
 
     setAttentions((current) => [data, ...current]);
-    setForm(initialForm);
+    setForm(createInitialForm());
 
     await loadData();
   }
@@ -329,7 +374,9 @@ export default function App() {
     }
 
     setMedicines((current) =>
-      current.map((item) => (item.id === medicineId ? { ...item, stock } : item))
+      current.map((item) =>
+        item.id === medicineId ? { ...item, stock } : item
+      )
     );
   }
 
@@ -617,6 +664,93 @@ export default function App() {
                 }
               />
 
+              <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4 md:col-span-3">
+                <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-zinc-600">
+                  Signos vitales
+                </h3>
+
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
+                  <label className="block">
+                    <span className="mb-1 block text-sm font-medium text-zinc-700">
+                      Frecuencia cardiaca
+                    </span>
+                    <input
+                      className="w-full rounded-xl border border-zinc-300 px-3 py-2"
+                      type="number"
+                      min="20"
+                      max="250"
+                      placeholder="Ej. 82"
+                      value={form.heart_rate}
+                      onChange={(event) =>
+                        updateField("heart_rate", event.target.value)
+                      }
+                    />
+                    <span className="mt-1 block text-xs text-zinc-500">
+                      Latidos por minuto
+                    </span>
+                  </label>
+
+                  <label className="block">
+                    <span className="mb-1 block text-sm font-medium text-zinc-700">
+                      Frecuencia respiratoria
+                    </span>
+                    <input
+                      className="w-full rounded-xl border border-zinc-300 px-3 py-2"
+                      type="number"
+                      min="5"
+                      max="80"
+                      placeholder="Ej. 18"
+                      value={form.respiratory_rate}
+                      onChange={(event) =>
+                        updateField("respiratory_rate", event.target.value)
+                      }
+                    />
+                    <span className="mt-1 block text-xs text-zinc-500">
+                      Respiraciones por minuto
+                    </span>
+                  </label>
+
+                  <label className="block">
+                    <span className="mb-1 block text-sm font-medium text-zinc-700">
+                      Tensión arterial
+                    </span>
+                    <input
+                      className="w-full rounded-xl border border-zinc-300 px-3 py-2"
+                      type="text"
+                      placeholder="Ej. 120/80"
+                      value={form.blood_pressure}
+                      onChange={(event) =>
+                        updateField("blood_pressure", event.target.value)
+                      }
+                    />
+                    <span className="mt-1 block text-xs text-zinc-500">
+                      Formato: sistólica/diastólica mmHg
+                    </span>
+                  </label>
+
+                  <label className="block">
+                    <span className="mb-1 block text-sm font-medium text-zinc-700">
+                      Temperatura
+                    </span>
+                    <input
+                      className="w-full rounded-xl border border-zinc-300 px-3 py-2"
+                      type="number"
+                      min="30"
+                      max="45"
+                      step="0.1"
+                      placeholder="Ej. 36.7"
+                      value={form.temperature}
+                      onChange={(event) =>
+                        updateField("temperature", event.target.value)
+                      }
+                    />
+                    <span className="mt-1 block text-xs text-zinc-500">
+                      Grados Celsius
+                    </span>
+                  </label>
+                </div>
+              </div>
+
               <textarea
                 className="rounded-xl border border-zinc-300 px-3 py-2 md:col-span-3"
                 placeholder="Notas"
@@ -687,7 +821,7 @@ export default function App() {
           </h2>
 
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[1000px] text-sm">
+            <table className="w-full min-w-[1100px] text-sm">
               <thead>
                 <tr className="border-b bg-zinc-50 text-left text-xs uppercase text-zinc-500">
                   <th className="p-3">Fecha</th>
@@ -697,6 +831,7 @@ export default function App() {
                   <th className="p-3">Diagnóstico</th>
                   <th className="p-3">Riesgo</th>
                   <th className="p-3">Tiempo</th>
+                  <th className="p-3">Signos vitales</th>
                   <th className="p-3">Notas</th>
                   {canDelete && <th className="p-3 text-right">Acciones</th>}
                 </tr>
@@ -706,14 +841,49 @@ export default function App() {
                 {attentions.map((attention) => (
                   <tr key={attention.id} className="border-b align-top">
                     <td className="p-3">{attention.attention_date}</td>
+
                     <td className="p-3 font-medium">
                       {attention.patient_name}
                     </td>
+
                     <td className="p-3">{attention.employee_number}</td>
                     <td className="p-3">{attention.area || "-"}</td>
                     <td className="p-3">{attention.diagnosis || "-"}</td>
                     <td className="p-3">{attention.risk_level}</td>
                     <td className="p-3">{attention.attention_minutes} min</td>
+
+                    <td className="p-3">
+                      <div className="space-y-1 text-xs text-zinc-700">
+                        <div>
+                          <span className="font-semibold">FC:</span>{" "}
+                          {attention.heart_rate
+                            ? `${attention.heart_rate} lpm`
+                            : "-"}
+                        </div>
+
+                        <div>
+                          <span className="font-semibold">FR:</span>{" "}
+                          {attention.respiratory_rate
+                            ? `${attention.respiratory_rate} rpm`
+                            : "-"}
+                        </div>
+
+                        <div>
+                          <span className="font-semibold">TA:</span>{" "}
+                          {attention.systolic_bp && attention.diastolic_bp
+                            ? `${attention.systolic_bp}/${attention.diastolic_bp} mmHg`
+                            : "-"}
+                        </div>
+
+                        <div>
+                          <span className="font-semibold">Temp:</span>{" "}
+                          {attention.temperature
+                            ? `${attention.temperature} °C`
+                            : "-"}
+                        </div>
+                      </div>
+                    </td>
+
                     <td className="p-3">{attention.notes || "-"}</td>
 
                     {canDelete && (
