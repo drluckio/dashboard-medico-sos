@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { supabase } from "./lib/supabaseClient";
 import AntidopingModule from "./AntidopingModule.jsx";
 import ChronicDegenerativeModule from "./ChronicDegenerativeModule.jsx";
+import CompaniesPlantsModule from "./CompaniesPlantsModule.jsx";
 
 const riskLevels = ["Bajo", "Medio", "Alto", "Crítico"];
 
@@ -36,6 +37,11 @@ const navItems = [
     label: "Reportes",
     subtitle: "Indicadores",
   },
+{
+  id: "empresas",
+  label: "Empresas",
+  subtitle: "Clientes y plantas",
+},
 ];
 
 function createInitialAttentionForm() {
@@ -1157,7 +1163,9 @@ export default function App() {
               medicines={medicines}
             />
           )}
-
+{activeModule === "empresas" && (
+  <CompaniesPlantsModule session={session} userRole={userRole} />
+)}
           {activeModule === "atenciones" && (
             <AttentionsModule
               session={session}
