@@ -1,18 +1,44 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { supabase } from "./lib/supabaseClient";
 import AntidopingModule from "./AntidopingModule.jsx";
+import ChronicDegenerativeModule from "./ChronicDegenerativeModule.jsx";
 
 const riskLevels = ["Bajo", "Medio", "Alto", "Crítico"];
 
 const navItems = [
-  { id: "dashboard", label: "Dashboard", subtitle: "Centro de control" },
-  { id: "atenciones", label: "Atenciones", subtitle: "Registro clínico" },
-  { id: "antidoping", label: "Antidoping", subtitle: "Pruebas toxicológicas" },
-  { id: "inventario", label: "Inventario", subtitle: "Insumos médicos" },
-  { id: "reportes", label: "Reportes", subtitle: "Vista ejecutiva" },
+  {
+    id: "dashboard",
+    label: "Dashboard",
+    subtitle: "Centro de mando",
+  },
+  {
+    id: "atenciones",
+    label: "Atenciones",
+    subtitle: "Consulta in-plant",
+  },
+  {
+    id: "antidoping",
+    label: "Antidoping",
+    subtitle: "Pruebas toxicológicas",
+  },
+  {
+    id: "cronicos",
+    label: "Crónico-degenerativos",
+    subtitle: "Programa preventivo",
+  },
+  {
+    id: "inventario",
+    label: "Inventario",
+    subtitle: "Medicamentos",
+  },
+  {
+    id: "reportes",
+    label: "Reportes",
+    subtitle: "Indicadores",
+  },
 ];
 
-function createInitialForm() {
+function createInitialAttentionForm() {
   return {
     patient_name: "",
     employee_number: "",
@@ -20,140 +46,42 @@ function createInitialForm() {
     area: "",
     diagnosis: "",
     risk_level: "Bajo",
-    attention_minutes: 15,
+    attention_minutes: "",
     medicine_id: "",
-    medicine_quantity: 0,
+    medicine_quantity: "",
+    notes: "",
     heart_rate: "",
     respiratory_rate: "",
-    blood_pressure: "",
+    systolic_bp: "",
+    diastolic_bp: "",
     temperature: "",
-    notes: "",
   };
 }
 
-function evaluateVitalAlerts(vitals) {
-  const alerts = [];
-
-  const heartRate = Number(vitals.heart_rate);
-  const respiratoryRate = Number(vitals.respiratory_rate);
-  const systolicBp = Number(vitals.systolic_bp);
-  const diastolicBp = Number(vitals.diastolic_bp);
-  const temperature = Number(vitals.temperature);
-
-  if (
-    vitals.heart_rate !== null &&
-    vitals.heart_rate !== "" &&
-    !Number.isNaN(heartRate)
-  ) {
-    if (heartRate < 60) alerts.push("FC baja");
-    if (heartRate > 100) alerts.push("FC elevada");
-  }
-
-  if (
-    vitals.respiratory_rate !== null &&
-    vitals.respiratory_rate !== "" &&
-    !Number.isNaN(respiratoryRate)
-  ) {
-    if (respiratoryRate < 8) alerts.push("FR baja");
-    if (respiratoryRate > 20) alerts.push("FR elevada");
-  }
-
-  if (
-    vitals.systolic_bp !== null &&
-    vitals.diastolic_bp !== null &&
-    !Number.isNaN(systolicBp) &&
-    !Number.isNaN(diastolicBp)
-  ) {
-    if (systolicBp > 159) alerts.push("TA sistólica elevada");
-    if (systolicBp < 100) alerts.push("TA sistólica baja");
-    if (diastolicBp > 90) alerts.push("TA diastólica elevada");
-    if (diastolicBp < 60) alerts.push("TA diastólica baja");
-  }
-
-  if (
-    vitals.temperature !== null &&
-    vitals.temperature !== "" &&
-    !Number.isNaN(temperature)
-  ) {
-    if (temperature >= 38) alerts.push("Fiebre");
-    if (temperature < 35) alerts.push("Temperatura baja");
-  }
-
-  return alerts;
+function createInitialMedicineForm() {
+  return {
+    name: "",
+    stock: "",
+    minimum_stock: "",
+    unit: "piezas",
+  };
 }
 
-function formatBloodPressureInput(value) {
-  const digits = value.replace(/\D/g, "").slice(0, 6);
+function toNumberOrNull(value) {
+  if (value === "" || value === null || value === undefined) return null;
+  const numberValue = Number(value);
+  return Number.isFinite(numberValue) ? numberValue : null;
+}
 
-  if (digits.length <= 3) return digits;
-
-  if (digits.length === 4) {
-    const firstThree = Number(digits.slice(0, 3));
-
-    if (firstThree >= 100) {
-      return `${digits.slice(0, 3)}/${digits.slice(3)}`;
-    }
-
-    return `${digits.slice(0, 2)}/${digits.slice(2)}`;
-  }
-
-  if (digits.length === 5) {
-    return `${digits.slice(0, 3)}/${digits.slice(3)}`;
-  }
-
-  return `${digits.slice(0, 3)}/${digits.slice(3, 6)}`;
+function toIntegerOrZero(value) {
+  const numberValue = Number(value);
+  return Number.isFinite(numberValue) ? numberValue : 0;
 }
 
 function escapeCsv(value) {
   if (value === null || value === undefined) return "";
   const stringValue = String(value).replace(/"/g, '""');
   return `"${stringValue}"`;
-}
-
-function getTodayForFileName() {
-  return new Date().toISOString().slice(0, 10);
-}
-
-function getMonthKey(dateString) {
-  if (!dateString) return "";
-  return dateString.slice(0, 7);
-}
-
-function getCurrentMonthKey() {
-  return new Date().toISOString().slice(0, 7);
-}
-
-function getMonthLabel(monthKey) {
-  if (!monthKey) return "Sin mes";
-
-  const [year, month] = monthKey.split("-");
-  const date = new Date(Number(year), Number(month) - 1, 1);
-
-  return date.toLocaleDateString("es-MX", {
-    month: "long",
-    year: "numeric",
-  });
-}
-
-function buildCountList(items, getValue, limit = 5) {
-  const counts = {};
-
-  items.forEach((item) => {
-    const rawValue = getValue(item);
-    const value =
-      rawValue === null ||
-      rawValue === undefined ||
-      String(rawValue).trim() === ""
-        ? "Sin especificar"
-        : String(rawValue).trim();
-
-    counts[value] = (counts[value] || 0) + 1;
-  });
-
-  return Object.entries(counts)
-    .map(([label, count]) => ({ label, count }))
-    .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label))
-    .slice(0, limit);
 }
 
 function downloadCsv(filename, headers, rows) {
@@ -179,20 +107,106 @@ function downloadCsv(filename, headers, rows) {
   URL.revokeObjectURL(url);
 }
 
+function getTodayForFileName() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function getCurrentMonthKey() {
+  return new Date().toISOString().slice(0, 7);
+}
+
+function getMonthKey(dateString) {
+  if (!dateString) return "";
+  return dateString.slice(0, 7);
+}
+
+function getMonthLabel(monthKey) {
+  if (!monthKey) return "Sin mes";
+
+  const [year, month] = monthKey.split("-");
+  const date = new Date(Number(year), Number(month) - 1, 1);
+
+  return date.toLocaleDateString("es-MX", {
+    month: "long",
+    year: "numeric",
+  });
+}
+
 function getRiskBadgeClass(risk) {
-  if (risk === "Crítico") return "bg-red-100 text-red-800 ring-red-200";
-  if (risk === "Alto") return "bg-orange-100 text-orange-800 ring-orange-200";
-  if (risk === "Medio") return "bg-amber-100 text-amber-800 ring-amber-200";
+  if (risk === "Crítico") {
+    return "bg-red-100 text-red-800 ring-red-200";
+  }
+
+  if (risk === "Alto") {
+    return "bg-orange-100 text-orange-800 ring-orange-200";
+  }
+
+  if (risk === "Medio") {
+    return "bg-amber-100 text-amber-800 ring-amber-200";
+  }
+
   return "bg-emerald-100 text-emerald-800 ring-emerald-200";
 }
 
-function getRoleBadgeClass(role) {
-  if (role === "admin") return "bg-red-600 text-white";
-  if (role === "medico") return "bg-blue-100 text-blue-800";
-  if (role === "enfermeria") return "bg-emerald-100 text-emerald-800";
-  if (role === "lectura") return "bg-zinc-100 text-zinc-700";
-  if (role === "bloqueado") return "bg-red-100 text-red-800";
-  return "bg-zinc-200 text-zinc-700";
+function buildVitalAlerts(attention) {
+  const alerts = [];
+
+  const heartRate = Number(attention.heart_rate);
+  const respiratoryRate = Number(attention.respiratory_rate);
+  const systolic = Number(attention.systolic_bp);
+  const diastolic = Number(attention.diastolic_bp);
+  const temperature = Number(attention.temperature);
+
+  if (attention.heart_rate !== null && attention.heart_rate !== undefined) {
+    if (heartRate < 50) alerts.push("FC baja");
+    if (heartRate > 120) alerts.push("FC elevada");
+  }
+
+  if (
+    attention.respiratory_rate !== null &&
+    attention.respiratory_rate !== undefined
+  ) {
+    if (respiratoryRate < 10) alerts.push("FR baja");
+    if (respiratoryRate > 24) alerts.push("FR elevada");
+  }
+
+  if (attention.systolic_bp !== null && attention.systolic_bp !== undefined) {
+    if (systolic < 90) alerts.push("TA sistólica baja");
+    if (systolic >= 180) alerts.push("TA sistólica crítica");
+  }
+
+  if (attention.diastolic_bp !== null && attention.diastolic_bp !== undefined) {
+    if (diastolic < 50) alerts.push("TA diastólica baja");
+    if (diastolic >= 120) alerts.push("TA diastólica crítica");
+  }
+
+  if (attention.temperature !== null && attention.temperature !== undefined) {
+    if (temperature < 35.5) alerts.push("Temperatura baja");
+    if (temperature >= 38) alerts.push("Fiebre");
+  }
+
+  return alerts;
+}
+
+function buildCountList(items, getValue, limit = 8) {
+  const counts = {};
+
+  items.forEach((item) => {
+    const rawValue = getValue(item);
+    const value =
+      rawValue === null ||
+      rawValue === undefined ||
+      String(rawValue).trim() === ""
+        ? "Sin especificar"
+        : String(rawValue).trim();
+
+    counts[value] = (counts[value] || 0) + 1;
+  });
+
+  return Object.entries(counts)
+    .map(([label, count]) => ({ label, count }))
+    .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label))
+    .slice(0, limit);
 }
 
 function KpiCard({ label, value, helper, tone = "neutral" }) {
@@ -203,6 +217,8 @@ function KpiCard({ label, value, helper, tone = "neutral" }) {
       ? "border-zinc-800 bg-zinc-950 text-white"
       : tone === "amber"
       ? "border-amber-200 bg-amber-50 text-amber-900"
+      : tone === "blue"
+      ? "border-blue-200 bg-blue-50 text-blue-900"
       : "border-zinc-200 bg-white text-zinc-950";
 
   return (
@@ -224,76 +240,336 @@ function EmptyState({ text }) {
   );
 }
 
-export default function App() {
-  const [session, setSession] = useState(null);
-  const [checkingSession, setCheckingSession] = useState(true);
-  const [loadingData, setLoadingData] = useState(false);
+function ReportList({ title, items }) {
+  return (
+    <div className="rounded-3xl border border-zinc-200 bg-white p-5">
+      <h3 className="mb-4 text-lg font-black tracking-tight">{title}</h3>
 
+      <div className="space-y-2">
+        {items.length > 0 ? (
+          items.map((item) => (
+            <div
+              key={item.label}
+              className="flex items-center justify-between rounded-2xl bg-zinc-50 px-4 py-3 text-sm text-zinc-900"
+            >
+              <span>{item.label}</span>
+              <strong>{item.count}</strong>
+            </div>
+          ))
+        ) : (
+          <EmptyState text="Sin registros." />
+        )}
+      </div>
+    </div>
+  );
+}
+
+function LoginScreen() {
+  const [mode, setMode] = useState("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
 
-  const [recoveryMode, setRecoveryMode] = useState(false);
-  const [newPassword, setNewPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
-  const [recoveryEmailSent, setRecoveryEmailSent] = useState(false);
+  async function handleSubmit(event) {
+    event.preventDefault();
 
+    if (!email.trim()) {
+      alert("Captura tu correo.");
+      return;
+    }
+
+    if (mode !== "recover" && !password.trim()) {
+      alert("Captura tu contraseña.");
+      return;
+    }
+
+    if (mode === "login") {
+      const { error } = await supabase.auth.signInWithPassword({
+        email: email.trim(),
+        password,
+      });
+
+      if (error) {
+        alert("No se pudo iniciar sesión: " + error.message);
+      }
+
+      return;
+    }
+
+    if (mode === "register") {
+      const { error } = await supabase.auth.signUp({
+        email: email.trim(),
+        password,
+      });
+
+      if (error) {
+        alert("No se pudo crear la cuenta: " + error.message);
+      } else {
+        alert(
+          "Cuenta creada. Si Supabase requiere confirmación, revisa el correo."
+        );
+      }
+
+      return;
+    }
+
+    if (mode === "recover") {
+      const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
+        redirectTo: window.location.origin,
+      });
+
+      if (error) {
+        alert("No se pudo enviar recuperación: " + error.message);
+      } else {
+        alert("Revisa tu correo para recuperar la contraseña.");
+      }
+    }
+  }
+
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-zinc-950 px-4 py-10 text-white">
+      <div className="w-full max-w-md rounded-[2rem] border border-white/10 bg-white/5 p-8 shadow-2xl backdrop-blur">
+        <div className="mb-8 text-center">
+          <img
+            src="/logo.png"
+            alt="SOS"
+            className="mx-auto mb-5 h-20 w-auto object-contain"
+          />
+
+          <p className="text-xs font-semibold uppercase tracking-[0.3em] text-red-400">
+            SOS MedicalOps
+          </p>
+
+          <h1 className="mt-3 text-3xl font-black tracking-tight">
+            Centro médico-operativo
+          </h1>
+
+          <p className="mt-3 text-sm text-zinc-400">
+            Plataforma de control clínico industrial, trazabilidad y reportes.
+          </p>
+        </div>
+
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <input
+            className="w-full rounded-2xl border border-white/10 bg-white/10 px-4 py-3 text-white outline-none ring-red-700/30 placeholder:text-zinc-500 focus:ring-4"
+            placeholder="Correo"
+            type="email"
+            value={email}
+            onChange={(event) => setEmail(event.target.value)}
+          />
+
+          {mode !== "recover" && (
+            <input
+              className="w-full rounded-2xl border border-white/10 bg-white/10 px-4 py-3 text-white outline-none ring-red-700/30 placeholder:text-zinc-500 focus:ring-4"
+              placeholder="Contraseña"
+              type="password"
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+            />
+          )}
+
+          <button className="w-full rounded-2xl bg-red-700 px-5 py-4 font-black text-white hover:bg-red-800">
+            {mode === "login"
+              ? "Iniciar sesión"
+              : mode === "register"
+              ? "Crear cuenta"
+              : "Enviar recuperación"}
+          </button>
+        </form>
+
+        <div className="mt-5 grid grid-cols-1 gap-2 text-sm">
+          <button
+            type="button"
+            onClick={() => setMode("login")}
+            className="rounded-xl px-3 py-2 text-zinc-300 hover:bg-white/10"
+          >
+            Iniciar sesión
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setMode("register")}
+            className="rounded-xl px-3 py-2 text-zinc-300 hover:bg-white/10"
+          >
+            Crear usuario
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setMode("recover")}
+            className="rounded-xl px-3 py-2 text-zinc-300 hover:bg-white/10"
+          >
+            Recuperar contraseña
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export default function App() {
+  const [session, setSession] = useState(null);
+  const [authLoading, setAuthLoading] = useState(true);
   const [userRole, setUserRole] = useState(null);
-  const [medicines, setMedicines] = useState([]);
-  const [attentions, setAttentions] = useState([]);
-  const [form, setForm] = useState(createInitialForm());
+  const [activeModule, setActiveModule] = useState("dashboard");
 
-  const [activeModule, setActiveModule] = useState("atenciones");
-  const [reportMonth, setReportMonth] = useState(getCurrentMonthKey());
-  const [logoFailed, setLogoFailed] = useState(false);
+  const [attentions, setAttentions] = useState([]);
+  const [medicines, setMedicines] = useState([]);
+  const [attentionForm, setAttentionForm] = useState(createInitialAttentionForm());
+  const [medicineForm, setMedicineForm] = useState(createInitialMedicineForm());
+  const [loadingData, setLoadingData] = useState(false);
 
   const [filters, setFilters] = useState({
     startDate: "",
     endDate: "",
-    riskLevel: "Todos",
+    risk: "Todos",
     area: "Todas",
     employeeNumber: "",
-    capturedBy: "",
+    capturer: "Todos",
     searchText: "",
-    onlyVitalAlerts: false,
+    vitalAlertsOnly: false,
   });
 
+  const [reportMonth, setReportMonth] = useState(getCurrentMonthKey());
+
+  const canCreateAttention = ["admin", "medico", "enfermeria"].includes(userRole);
+  const canDeleteAttention = userRole === "admin";
+
+  const canCreateMedicine = ["admin", "enfermeria"].includes(userRole);
+  const canEditMedicine = ["admin", "medico", "enfermeria"].includes(userRole);
+  const canDeleteMedicine = userRole === "admin";
+
   useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => {
-      setSession(data.session);
-      setCheckingSession(false);
+    initializeAuth();
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+      setSession(nextSession);
+      setAuthLoading(false);
+
+      if (nextSession?.user) {
+        loadUserRole(nextSession.user.id);
+      } else {
+        setUserRole(null);
+      }
     });
 
-    const { data: listener } = supabase.auth.onAuthStateChange(
-      (event, currentSession) => {
-        setSession(currentSession);
-
-        if (event === "PASSWORD_RECOVERY") {
-          setRecoveryMode(true);
-          setCheckingSession(false);
-        }
-      }
-    );
-
-    return () => {
-      listener.subscription.unsubscribe();
-    };
+    return () => subscription.unsubscribe();
   }, []);
 
   useEffect(() => {
-    if (session) {
-      loadSessionData();
+    if (session?.user && userRole) {
+      loadMainData();
     }
-  }, [session]);
+  }, [session, userRole]);
 
-  const canRegisterAttention = ["admin", "medico", "enfermeria"].includes(
-    userRole
-  );
+  async function initializeAuth() {
+    const { data } = await supabase.auth.getSession();
 
-  const canEditInventory = ["admin", "medico", "enfermeria"].includes(userRole);
-  const canDelete = userRole === "admin";
-  const isBlocked = userRole === "bloqueado";
+    setSession(data.session);
+    setAuthLoading(false);
 
-  const currentModule = navItems.find((item) => item.id === activeModule);
+    if (data.session?.user) {
+      await loadUserRole(data.session.user.id);
+    }
+  }
+
+  async function loadUserRole(userId) {
+    const { data, error } = await supabase
+      .from("user_roles")
+      .select("role")
+      .eq("user_id", userId)
+      .maybeSingle();
+
+    if (error) {
+      alert("No se pudo cargar el rol del usuario: " + error.message);
+      setUserRole(null);
+      return;
+    }
+
+    setUserRole(data?.role || "lectura");
+  }
+
+  async function loadMainData() {
+    setLoadingData(true);
+
+    const [attentionsResponse, medicinesResponse] = await Promise.all([
+      supabase
+        .from("attentions")
+        .select(
+          `
+          *,
+          medicines (
+            id,
+            name,
+            unit
+          )
+        `
+        )
+        .order("attention_date", { ascending: false })
+        .order("created_at", { ascending: false }),
+      supabase
+        .from("medicines")
+        .select("*")
+        .order("name", { ascending: true }),
+    ]);
+
+    if (attentionsResponse.error) {
+      alert("Error cargando atenciones: " + attentionsResponse.error.message);
+    } else {
+      setAttentions(attentionsResponse.data || []);
+    }
+
+    if (medicinesResponse.error) {
+      alert("Error cargando inventario: " + medicinesResponse.error.message);
+    } else {
+      setMedicines(medicinesResponse.data || []);
+    }
+
+    setLoadingData(false);
+  }
+
+  async function signOut() {
+    await supabase.auth.signOut();
+    setSession(null);
+    setUserRole(null);
+    setAttentions([]);
+    setMedicines([]);
+  }
+
+  function updateAttentionField(field, value) {
+    setAttentionForm((current) => ({
+      ...current,
+      [field]: value,
+    }));
+  }
+
+  function updateMedicineField(field, value) {
+    setMedicineForm((current) => ({
+      ...current,
+      [field]: value,
+    }));
+  }
+
+  function updateFilter(field, value) {
+    setFilters((current) => ({
+      ...current,
+      [field]: value,
+    }));
+  }
+
+  function resetFilters() {
+    setFilters({
+      startDate: "",
+      endDate: "",
+      risk: "Todos",
+      area: "Todas",
+      employeeNumber: "",
+      capturer: "Todos",
+      searchText: "",
+      vitalAlertsOnly: false,
+    });
+  }
 
   const uniqueAreas = useMemo(() => {
     const areas = attentions
@@ -303,6 +579,16 @@ export default function App() {
       .filter(Boolean);
 
     return ["Todas", ...Array.from(new Set(areas)).sort()];
+  }, [attentions]);
+
+  const uniqueCapturers = useMemo(() => {
+    const capturers = attentions
+      .map((item) => item.created_by_email)
+      .filter(Boolean)
+      .map((email) => email.trim())
+      .filter(Boolean);
+
+    return ["Todos", ...Array.from(new Set(capturers)).sort()];
   }, [attentions]);
 
   const monthOptions = useMemo(() => {
@@ -323,14 +609,18 @@ export default function App() {
       if (filters.startDate && attentionDate < filters.startDate) return false;
       if (filters.endDate && attentionDate > filters.endDate) return false;
 
-      if (
-        filters.riskLevel !== "Todos" &&
-        attention.risk_level !== filters.riskLevel
-      ) {
+      if (filters.risk !== "Todos" && attention.risk_level !== filters.risk) {
         return false;
       }
 
       if (filters.area !== "Todas" && attention.area !== filters.area) {
+        return false;
+      }
+
+      if (
+        filters.capturer !== "Todos" &&
+        attention.created_by_email !== filters.capturer
+      ) {
         return false;
       }
 
@@ -343,12 +633,7 @@ export default function App() {
         return false;
       }
 
-      if (
-        filters.capturedBy.trim() &&
-        !String(attention.created_by_email || "")
-          .toLowerCase()
-          .includes(filters.capturedBy.trim().toLowerCase())
-      ) {
+      if (filters.vitalAlertsOnly && buildVitalAlerts(attention).length === 0) {
         return false;
       }
 
@@ -361,6 +646,7 @@ export default function App() {
           attention.risk_level,
           attention.notes,
           attention.created_by_email,
+          attention.medicines?.name,
         ]
           .filter(Boolean)
           .join(" ")
@@ -369,18 +655,6 @@ export default function App() {
         if (!searchBase.includes(filters.searchText.trim().toLowerCase())) {
           return false;
         }
-      }
-
-      if (filters.onlyVitalAlerts) {
-        const vitalAlerts = evaluateVitalAlerts({
-          heart_rate: attention.heart_rate,
-          respiratory_rate: attention.respiratory_rate,
-          systolic_bp: attention.systolic_bp,
-          diastolic_bp: attention.diastolic_bp,
-          temperature: attention.temperature,
-        });
-
-        if (vitalAlerts.length === 0) return false;
       }
 
       return true;
@@ -393,601 +667,121 @@ export default function App() {
     );
   }, [attentions, reportMonth]);
 
-  const kpis = useMemo(() => {
-    const total = filteredAttentions.length;
-
+  const dashboardKpis = useMemo(() => {
     const highRisk = filteredAttentions.filter((item) =>
       ["Alto", "Crítico"].includes(item.risk_level)
-    ).length;
-
-    const totalMinutes = filteredAttentions.reduce(
-      (sum, item) => sum + Number(item.attention_minutes || 0),
-      0
     );
 
-    const averageMinutes = total ? totalMinutes / total : 0;
+    const alertCount = filteredAttentions.filter(
+      (item) => buildVitalAlerts(item).length > 0
+    );
 
-    const vitalAlertsCount = filteredAttentions.filter((attention) => {
-      return (
-        evaluateVitalAlerts({
-          heart_rate: attention.heart_rate,
-          respiratory_rate: attention.respiratory_rate,
-          systolic_bp: attention.systolic_bp,
-          diastolic_bp: attention.diastolic_bp,
-          temperature: attention.temperature,
-        }).length > 0
-      );
-    }).length;
+    const averageMinutes =
+      filteredAttentions.length > 0
+        ? Math.round(
+            filteredAttentions.reduce(
+              (sum, item) => sum + Number(item.attention_minutes || 0),
+              0
+            ) / filteredAttentions.length
+          )
+        : 0;
 
     const lowStock = medicines.filter(
-      (medicine) =>
-        Number(medicine.stock || 0) <= Number(medicine.minimum_stock || 0)
-    ).length;
+      (medicine) => Number(medicine.stock) <= Number(medicine.minimum_stock)
+    );
 
     return {
-      total,
-      highRisk,
+      total: filteredAttentions.length,
+      highRisk: highRisk.length,
+      alerts: alertCount.length,
       averageMinutes,
-      medicinesCount: medicines.length,
-      vitalAlertsCount,
-      lowStock,
+      lowStock: lowStock.length,
     };
   }, [filteredAttentions, medicines]);
 
   const monthlyReport = useMemo(() => {
-    const total = monthlyAttentions.length;
-
-    const totalMinutes = monthlyAttentions.reduce(
-      (sum, item) => sum + Number(item.attention_minutes || 0),
-      0
+    const vitalAlerts = monthlyAttentions.filter(
+      (item) => buildVitalAlerts(item).length > 0
     );
-
-    const averageMinutes = total ? totalMinutes / total : 0;
-
-    const riskDistribution = riskLevels.map((risk) => ({
-      label: risk,
-      count: monthlyAttentions.filter((item) => item.risk_level === risk).length,
-    }));
-
-    const highRisk = monthlyAttentions.filter((item) =>
-      ["Alto", "Crítico"].includes(item.risk_level)
-    ).length;
-
-    const vitalAlertsCount = monthlyAttentions.filter((attention) => {
-      return (
-        evaluateVitalAlerts({
-          heart_rate: attention.heart_rate,
-          respiratory_rate: attention.respiratory_rate,
-          systolic_bp: attention.systolic_bp,
-          diastolic_bp: attention.diastolic_bp,
-          temperature: attention.temperature,
-        }).length > 0
-      );
-    }).length;
-
-    const medicineUsage = {};
-
-    monthlyAttentions.forEach((attention) => {
-      if (!attention.medicine_id) return;
-
-      const medicine = medicines.find((item) => item.id === attention.medicine_id);
-      const medicineName = medicine?.name || "Medicamento no identificado";
-      const quantity = Number(attention.medicine_quantity || 0);
-
-      medicineUsage[medicineName] = (medicineUsage[medicineName] || 0) + quantity;
-    });
-
-    const topMedicines = Object.entries(medicineUsage)
-      .map(([label, count]) => ({ label, count }))
-      .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label))
-      .slice(0, 5);
-
-    const topDiagnoses = buildCountList(
-      monthlyAttentions,
-      (item) => item.diagnosis,
-      5
-    );
-
-    const topAreas = buildCountList(monthlyAttentions, (item) => item.area, 5);
-
-    const topCapturers = buildCountList(
-      monthlyAttentions,
-      (item) => item.created_by_email,
-      5
-    );
-
-    const alertsBreakdown = {};
-
-    monthlyAttentions.forEach((attention) => {
-      const alerts = evaluateVitalAlerts({
-        heart_rate: attention.heart_rate,
-        respiratory_rate: attention.respiratory_rate,
-        systolic_bp: attention.systolic_bp,
-        diastolic_bp: attention.diastolic_bp,
-        temperature: attention.temperature,
-      });
-
-      alerts.forEach((alert) => {
-        alertsBreakdown[alert] = (alertsBreakdown[alert] || 0) + 1;
-      });
-    });
-
-    const topVitalAlerts = Object.entries(alertsBreakdown)
-      .map(([label, count]) => ({ label, count }))
-      .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label))
-      .slice(0, 5);
 
     return {
-      total,
-      averageMinutes,
-      highRisk,
-      vitalAlertsCount,
-      riskDistribution,
-      topMedicines,
-      topDiagnoses,
-      topAreas,
-      topCapturers,
-      topVitalAlerts,
+      total: monthlyAttentions.length,
+      highRisk: monthlyAttentions.filter((item) =>
+        ["Alto", "Crítico"].includes(item.risk_level)
+      ).length,
+      vitalAlerts: vitalAlerts.length,
+      averageMinutes:
+        monthlyAttentions.length > 0
+          ? Math.round(
+              monthlyAttentions.reduce(
+                (sum, item) => sum + Number(item.attention_minutes || 0),
+                0
+              ) / monthlyAttentions.length
+            )
+          : 0,
+      byRisk: buildCountList(monthlyAttentions, (item) => item.risk_level),
+      byDiagnosis: buildCountList(monthlyAttentions, (item) => item.diagnosis),
+      byArea: buildCountList(monthlyAttentions, (item) => item.area),
+      byCapturer: buildCountList(
+        monthlyAttentions,
+        (item) => item.created_by_email
+      ),
+      byMedicine: buildCountList(
+        monthlyAttentions,
+        (item) => item.medicines?.name
+      ),
     };
-  }, [monthlyAttentions, medicines]);
-
-  const recentVitalAlerts = useMemo(() => {
-    return attentions
-      .map((attention) => ({
-        ...attention,
-        vitalAlerts: evaluateVitalAlerts({
-          heart_rate: attention.heart_rate,
-          respiratory_rate: attention.respiratory_rate,
-          systolic_bp: attention.systolic_bp,
-          diastolic_bp: attention.diastolic_bp,
-          temperature: attention.temperature,
-        }),
-      }))
-      .filter((attention) => attention.vitalAlerts.length > 0)
-      .slice(0, 5);
-  }, [attentions]);
-
-  const lowStockMedicines = useMemo(() => {
-    return medicines.filter(
-      (medicine) =>
-        Number(medicine.stock || 0) <= Number(medicine.minimum_stock || 0)
-    );
-  }, [medicines]);
-
-  async function loadSessionData() {
-    const role = await loadUserRole();
-
-    if (role === "bloqueado") return;
-
-    await loadData();
-  }
-
-  async function loadUserRole() {
-    if (!session?.user?.id) return null;
-
-    const { data, error } = await supabase
-      .from("user_roles")
-      .select("role")
-      .eq("user_id", session.user.id)
-      .maybeSingle();
-
-    if (error) {
-      alert("No se pudo cargar el rol del usuario: " + error.message);
-      setUserRole("sin_rol");
-      return "sin_rol";
-    }
-
-    if (!data) {
-      alert("Este usuario no tiene rol asignado en Supabase.");
-      setUserRole("sin_rol");
-      return "sin_rol";
-    }
-
-    setUserRole(data.role);
-    return data.role;
-  }
-
-  async function loadData() {
-    setLoadingData(true);
-
-    const medicinesResult = await supabase
-      .from("medicines")
-      .select("*")
-      .order("name", { ascending: true });
-
-    const attentionsResult = await supabase
-      .from("attentions")
-      .select("*")
-      .order("attention_date", { ascending: false });
-
-    if (medicinesResult.error) {
-      alert("Error cargando medicamentos: " + medicinesResult.error.message);
-    } else {
-      setMedicines(medicinesResult.data || []);
-    }
-
-    if (attentionsResult.error) {
-      alert("Error cargando atenciones: " + attentionsResult.error.message);
-    } else {
-      setAttentions(attentionsResult.data || []);
-    }
-
-    setLoadingData(false);
-  }
-
-  async function login(event) {
-    event.preventDefault();
-
-    const { error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
-
-    if (error) {
-      alert("No se pudo iniciar sesión. Revisa correo y contraseña.");
-    }
-  }
-
-  async function sendRecoveryEmail() {
-    if (!email.trim()) {
-      alert("Primero escribe tu correo electrónico.");
-      return;
-    }
-
-    const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
-      redirectTo: window.location.origin,
-    });
-
-    if (error) {
-      alert("No se pudo enviar el correo de recuperación: " + error.message);
-      return;
-    }
-
-    setRecoveryEmailSent(true);
-    alert("Correo de recuperación enviado. Revisa tu bandeja de entrada.");
-  }
-
-  async function updatePassword(event) {
-    event.preventDefault();
-
-    if (newPassword.length < 8) {
-      alert("La nueva contraseña debe tener al menos 8 caracteres.");
-      return;
-    }
-
-    if (newPassword !== confirmPassword) {
-      alert("Las contraseñas no coinciden.");
-      return;
-    }
-
-    const { error } = await supabase.auth.updateUser({
-      password: newPassword,
-    });
-
-    if (error) {
-      alert("No se pudo actualizar la contraseña: " + error.message);
-      return;
-    }
-
-    alert("Contraseña actualizada correctamente. Inicia sesión de nuevo.");
-
-    setNewPassword("");
-    setConfirmPassword("");
-    setRecoveryMode(false);
-
-    await supabase.auth.signOut();
-    setSession(null);
-  }
-
-  async function logout() {
-    await supabase.auth.signOut();
-
-    setSession(null);
-    setUserRole(null);
-    setMedicines([]);
-    setAttentions([]);
-  }
-
-  function updateField(field, value) {
-    setForm((current) => ({
-      ...current,
-      [field]: value,
-    }));
-  }
-
-  function updateFilter(field, value) {
-    setFilters((current) => ({
-      ...current,
-      [field]: value,
-    }));
-  }
-
-  function resetFilters() {
-    setFilters({
-      startDate: "",
-      endDate: "",
-      riskLevel: "Todos",
-      area: "Todas",
-      employeeNumber: "",
-      capturedBy: "",
-      searchText: "",
-      onlyVitalAlerts: false,
-    });
-  }
-
-  function exportFilteredToCsv() {
-    if (filteredAttentions.length === 0) {
-      alert("No hay registros filtrados para exportar.");
-      return;
-    }
-
-    const headers = [
-      "Fecha",
-      "Paciente",
-      "Numero de empleado",
-      "Area",
-      "Diagnostico/Motivo",
-      "Riesgo",
-      "Tiempo de atencion min",
-      "Capturo",
-      "Medicamento",
-      "Cantidad medicamento",
-      "FC lpm",
-      "FR rpm",
-      "TA mmHg",
-      "Temperatura C",
-      "Alertas vitales",
-      "Notas",
-    ];
-
-    const rows = filteredAttentions.map((attention) => {
-      const medicine = medicines.find((item) => item.id === attention.medicine_id);
-
-      const vitalAlerts = evaluateVitalAlerts({
-        heart_rate: attention.heart_rate,
-        respiratory_rate: attention.respiratory_rate,
-        systolic_bp: attention.systolic_bp,
-        diastolic_bp: attention.diastolic_bp,
-        temperature: attention.temperature,
-      });
-
-      const bloodPressure =
-        attention.systolic_bp && attention.diastolic_bp
-          ? `${attention.systolic_bp}/${attention.diastolic_bp}`
-          : "";
-
-      return [
-        attention.attention_date,
-        attention.patient_name,
-        attention.employee_number,
-        attention.area,
-        attention.diagnosis,
-        attention.risk_level,
-        attention.attention_minutes,
-        attention.created_by_email || "Sin registro",
-        medicine?.name || "",
-        attention.medicine_quantity || "",
-        attention.heart_rate || "",
-        attention.respiratory_rate || "",
-        bloodPressure,
-        attention.temperature || "",
-        vitalAlerts.join(" | "),
-        attention.notes || "",
-      ];
-    });
-
-    downloadCsv(
-      `reporte-atenciones-sos-${getTodayForFileName()}.csv`,
-      headers,
-      rows
-    );
-  }
-
-  function exportMonthlyReportToCsv() {
-    if (monthlyAttentions.length === 0) {
-      alert("No hay registros en el mes seleccionado para exportar.");
-      return;
-    }
-
-    const summaryHeaders = ["Indicador", "Valor"];
-
-    const summaryRows = [
-      ["Mes", getMonthLabel(reportMonth)],
-      ["Total de atenciones", monthlyReport.total],
-      ["Tiempo promedio de atencion min", monthlyReport.averageMinutes.toFixed(1)],
-      ["Atenciones riesgo alto/critico", monthlyReport.highRisk],
-      ["Atenciones con alertas vitales", monthlyReport.vitalAlertsCount],
-    ];
-
-    const riskRows = monthlyReport.riskDistribution.map((item) => [
-      `Riesgo ${item.label}`,
-      item.count,
-    ]);
-
-    const diagnosisRows = monthlyReport.topDiagnoses.map((item) => [
-      `Diagnostico: ${item.label}`,
-      item.count,
-    ]);
-
-    const areaRows = monthlyReport.topAreas.map((item) => [
-      `Area: ${item.label}`,
-      item.count,
-    ]);
-
-    const capturerRows = monthlyReport.topCapturers.map((item) => [
-      `Capturista: ${item.label}`,
-      item.count,
-    ]);
-
-    const medicineRows = monthlyReport.topMedicines.map((item) => [
-      `Medicamento: ${item.label}`,
-      item.count,
-    ]);
-
-    const alertRows = monthlyReport.topVitalAlerts.map((item) => [
-      `Alerta vital: ${item.label}`,
-      item.count,
-    ]);
-
-    const detailHeaders = [
-      "Fecha",
-      "Paciente",
-      "Numero de empleado",
-      "Area",
-      "Diagnostico/Motivo",
-      "Riesgo",
-      "Tiempo min",
-      "Capturo",
-      "FC",
-      "FR",
-      "TA",
-      "Temperatura",
-      "Alertas",
-      "Notas",
-    ];
-
-    const detailRows = monthlyAttentions.map((attention) => {
-      const vitalAlerts = evaluateVitalAlerts({
-        heart_rate: attention.heart_rate,
-        respiratory_rate: attention.respiratory_rate,
-        systolic_bp: attention.systolic_bp,
-        diastolic_bp: attention.diastolic_bp,
-        temperature: attention.temperature,
-      });
-
-      return [
-        attention.attention_date,
-        attention.patient_name,
-        attention.employee_number,
-        attention.area || "",
-        attention.diagnosis || "",
-        attention.risk_level || "",
-        attention.attention_minutes || "",
-        attention.created_by_email || "Sin registro",
-        attention.heart_rate || "",
-        attention.respiratory_rate || "",
-        attention.systolic_bp && attention.diastolic_bp
-          ? `${attention.systolic_bp}/${attention.diastolic_bp}`
-          : "",
-        attention.temperature || "",
-        vitalAlerts.join(" | "),
-        attention.notes || "",
-      ];
-    });
-
-    const rows = [
-      ...summaryRows,
-      [""],
-      ...riskRows,
-      [""],
-      ...diagnosisRows,
-      [""],
-      ...areaRows,
-      [""],
-      ...capturerRows,
-      [""],
-      ...medicineRows,
-      [""],
-      ...alertRows,
-      [""],
-      detailHeaders,
-      ...detailRows,
-    ];
-
-    downloadCsv(
-      `reporte-mensual-sos-${reportMonth}.csv`,
-      summaryHeaders,
-      rows
-    );
-  }
-
-  function printMonthlyReport() {
-    window.print();
-  }
+  }, [monthlyAttentions]);
 
   async function saveAttention(event) {
     event.preventDefault();
 
-    if (!canRegisterAttention) {
+    if (!canCreateAttention) {
       alert("Tu rol no permite registrar atenciones.");
       return;
     }
 
-    if (!form.patient_name.trim()) {
+    if (!attentionForm.patient_name.trim()) {
       alert("Captura el nombre del paciente.");
       return;
     }
 
-    if (!form.employee_number.trim()) {
+    if (!attentionForm.employee_number.trim()) {
       alert("Captura el número de empleado.");
       return;
     }
 
-    let systolicBp = null;
-    let diastolicBp = null;
+    const medicineQuantity = toIntegerOrZero(attentionForm.medicine_quantity);
+    const medicineId = attentionForm.medicine_id || null;
 
-    if (form.blood_pressure.trim()) {
-      const bpParts = form.blood_pressure.trim().split("/");
-
-      if (bpParts.length !== 2) {
-        alert("Captura la tensión arterial en formato 120/80.");
-        return;
-      }
-
-      systolicBp = Number(bpParts[0]);
-      diastolicBp = Number(bpParts[1]);
-
-      if (
-        Number.isNaN(systolicBp) ||
-        Number.isNaN(diastolicBp) ||
-        systolicBp < 50 ||
-        systolicBp > 300 ||
-        diastolicBp < 20 ||
-        diastolicBp > 200
-      ) {
-        alert(
-          "La tensión arterial debe tener un formato válido, ejemplo: 120/80."
-        );
-        return;
-      }
+    if (medicineId && medicineQuantity <= 0) {
+      alert("Captura una cantidad válida del medicamento.");
+      return;
     }
 
-    const vitalAlerts = evaluateVitalAlerts({
-      heart_rate: form.heart_rate === "" ? null : Number(form.heart_rate),
-      respiratory_rate:
-        form.respiratory_rate === "" ? null : Number(form.respiratory_rate),
-      systolic_bp: systolicBp,
-      diastolic_bp: diastolicBp,
-      temperature: form.temperature === "" ? null : Number(form.temperature),
-    });
+    const selectedMedicine = medicines.find((item) => item.id === medicineId);
 
-    if (vitalAlerts.length > 0) {
-      const proceed = confirm(
-        "Se detectaron signos vitales fuera de rango:\n\n" +
-          vitalAlerts.map((alert) => `• ${alert}`).join("\n") +
-          "\n\n¿Deseas guardar la atención de todos modos?"
-      );
-
-      if (!proceed) return;
+    if (selectedMedicine && medicineQuantity > Number(selectedMedicine.stock)) {
+      alert("La cantidad indicada supera el stock disponible.");
+      return;
     }
 
     const payload = {
-      patient_name: form.patient_name.trim(),
-      employee_number: form.employee_number.trim(),
-      attention_date: form.attention_date,
-      area: form.area.trim() || null,
-      diagnosis: form.diagnosis.trim() || null,
-      risk_level: form.risk_level,
-      attention_minutes: Number(form.attention_minutes || 0),
-      medicine_id: form.medicine_id || null,
-      medicine_quantity: Number(form.medicine_quantity || 0),
-      heart_rate: form.heart_rate === "" ? null : Number(form.heart_rate),
-      respiratory_rate:
-        form.respiratory_rate === "" ? null : Number(form.respiratory_rate),
-      systolic_bp: systolicBp,
-      diastolic_bp: diastolicBp,
-      temperature: form.temperature === "" ? null : Number(form.temperature),
-      notes: form.notes.trim() || null,
+      patient_name: attentionForm.patient_name.trim(),
+      employee_number: attentionForm.employee_number.trim(),
+      attention_date: attentionForm.attention_date,
+      area: attentionForm.area.trim() || null,
+      diagnosis: attentionForm.diagnosis.trim() || null,
+      risk_level: attentionForm.risk_level,
+      attention_minutes: toIntegerOrZero(attentionForm.attention_minutes),
+      medicine_id: medicineId,
+      medicine_quantity: medicineQuantity,
+      notes: attentionForm.notes.trim() || null,
+      heart_rate: toNumberOrNull(attentionForm.heart_rate),
+      respiratory_rate: toNumberOrNull(attentionForm.respiratory_rate),
+      systolic_bp: toNumberOrNull(attentionForm.systolic_bp),
+      diastolic_bp: toNumberOrNull(attentionForm.diastolic_bp),
+      temperature: toNumberOrNull(attentionForm.temperature),
       created_by_user_id: session?.user?.id || null,
       created_by_email: session?.user?.email || "Sin correo",
     };
@@ -995,7 +789,16 @@ export default function App() {
     const { data, error } = await supabase
       .from("attentions")
       .insert(payload)
-      .select()
+      .select(
+        `
+        *,
+        medicines (
+          id,
+          name,
+          unit
+        )
+      `
+      )
       .single();
 
     if (error) {
@@ -1003,36 +806,35 @@ export default function App() {
       return;
     }
 
-    if (payload.medicine_id && payload.medicine_quantity > 0) {
-      const medicine = medicines.find((item) => item.id === payload.medicine_id);
+    if (selectedMedicine && medicineQuantity > 0) {
+      const newStock = Number(selectedMedicine.stock) - medicineQuantity;
 
-      const newStock = Math.max(
-        Number(medicine?.stock || 0) - payload.medicine_quantity,
-        0
-      );
-
-      const stockResult = await supabase
+      const { error: stockError } = await supabase
         .from("medicines")
         .update({ stock: newStock })
-        .eq("id", payload.medicine_id);
+        .eq("id", selectedMedicine.id);
 
-      if (stockResult.error) {
+      if (stockError) {
         alert(
-          "La atención se guardó, pero no se pudo descontar inventario: " +
-            stockResult.error.message
+          "La atención se guardó, pero no se pudo actualizar inventario: " +
+            stockError.message
+        );
+      } else {
+        setMedicines((current) =>
+          current.map((item) =>
+            item.id === selectedMedicine.id ? { ...item, stock: newStock } : item
+          )
         );
       }
     }
 
     setAttentions((current) => [data, ...current]);
-    setForm(createInitialForm());
-
-    await loadData();
+    setAttentionForm(createInitialAttentionForm());
   }
 
   async function deleteAttention(id) {
-    if (!canDelete) {
-      alert("Solo el rol admin puede eliminar registros.");
+    if (!canDeleteAttention) {
+      alert("Solo admin puede eliminar atenciones.");
       return;
     }
 
@@ -1048,280 +850,586 @@ export default function App() {
     setAttentions((current) => current.filter((item) => item.id !== id));
   }
 
-  async function updateStock(medicineId, newValue) {
-    if (!canEditInventory) {
-      alert("Tu rol no permite modificar inventario.");
+  async function saveMedicine(event) {
+    event.preventDefault();
+
+    if (!canCreateMedicine) {
+      alert("Tu rol no permite registrar medicamentos.");
       return;
     }
 
-    const stock = Number(newValue || 0);
+    if (!medicineForm.name.trim()) {
+      alert("Captura el nombre del medicamento.");
+      return;
+    }
 
-    const { error } = await supabase
+    const payload = {
+      name: medicineForm.name.trim(),
+      stock: toIntegerOrZero(medicineForm.stock),
+      minimum_stock: toIntegerOrZero(medicineForm.minimum_stock),
+      unit: medicineForm.unit.trim() || "piezas",
+    };
+
+    const { data, error } = await supabase
       .from("medicines")
-      .update({ stock })
-      .eq("id", medicineId);
+      .insert(payload)
+      .select()
+      .single();
 
     if (error) {
-      alert("No se pudo actualizar el stock: " + error.message);
+      alert("No se pudo guardar medicamento: " + error.message);
       return;
     }
 
     setMedicines((current) =>
-      current.map((item) =>
-        item.id === medicineId ? { ...item, stock } : item
-      )
+      [...current, data].sort((a, b) => a.name.localeCompare(b.name))
+    );
+
+    setMedicineForm(createInitialMedicineForm());
+  }
+
+  async function updateMedicineStock(medicine, nextStock) {
+    if (!canEditMedicine) {
+      alert("Tu rol no permite modificar inventario.");
+      return;
+    }
+
+    const stock = toIntegerOrZero(nextStock);
+
+    const { data, error } = await supabase
+      .from("medicines")
+      .update({ stock })
+      .eq("id", medicine.id)
+      .select()
+      .single();
+
+    if (error) {
+      alert("No se pudo actualizar stock: " + error.message);
+      return;
+    }
+
+    setMedicines((current) =>
+      current.map((item) => (item.id === medicine.id ? data : item))
     );
   }
 
-  function BrandBlock({ compact = false }) {
-    return (
-      <div className={`flex items-center gap-3 ${compact ? "" : "mb-8"}`}>
-        {!logoFailed ? (
-          <img
-            src="/logo.png"
-            alt="SOS"
-            onError={() => setLogoFailed(true)}
-            className="h-12 w-12 rounded-2xl object-contain ring-1 ring-white/10"
-          />
-        ) : (
-          <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-red-700 text-lg font-black text-white">
-            SOS
-          </div>
-        )}
+  async function deleteMedicine(id) {
+    if (!canDeleteMedicine) {
+      alert("Solo admin puede eliminar medicamentos.");
+      return;
+    }
 
-        <div>
-          <p className="text-lg font-black tracking-tight text-white">
+    if (!confirm("¿Eliminar este medicamento?")) return;
+
+    const { error } = await supabase.from("medicines").delete().eq("id", id);
+
+    if (error) {
+      alert("No se pudo eliminar medicamento: " + error.message);
+      return;
+    }
+
+    setMedicines((current) => current.filter((item) => item.id !== id));
+  }
+
+  function exportAttentionsCsv() {
+    if (filteredAttentions.length === 0) {
+      alert("No hay atenciones filtradas para exportar.");
+      return;
+    }
+
+    const headers = [
+      "Fecha",
+      "Paciente",
+      "Numero de empleado",
+      "Area",
+      "Diagnostico / motivo",
+      "Riesgo",
+      "Minutos",
+      "Medicamento",
+      "Cantidad",
+      "FC",
+      "FR",
+      "TA sistolica",
+      "TA diastolica",
+      "Temperatura",
+      "Alertas vitales",
+      "Capturo",
+      "Notas",
+    ];
+
+    const rows = filteredAttentions.map((attention) => [
+      attention.attention_date,
+      attention.patient_name,
+      attention.employee_number,
+      attention.area || "",
+      attention.diagnosis || "",
+      attention.risk_level,
+      attention.attention_minutes || 0,
+      attention.medicines?.name || "",
+      attention.medicine_quantity || "",
+      attention.heart_rate || "",
+      attention.respiratory_rate || "",
+      attention.systolic_bp || "",
+      attention.diastolic_bp || "",
+      attention.temperature || "",
+      buildVitalAlerts(attention).join(" | "),
+      attention.created_by_email || "",
+      attention.notes || "",
+    ]);
+
+    downloadCsv(`atenciones-sos-${getTodayForFileName()}.csv`, headers, rows);
+  }
+
+  function exportMonthlyReportCsv() {
+    if (monthlyAttentions.length === 0) {
+      alert("No hay atenciones en el mes seleccionado.");
+      return;
+    }
+
+    const headers = ["Indicador", "Valor"];
+
+    const rows = [
+      ["Mes", getMonthLabel(reportMonth)],
+      ["Total de atenciones", monthlyReport.total],
+      ["Alto / crítico", monthlyReport.highRisk],
+      ["Alertas vitales", monthlyReport.vitalAlerts],
+      ["Tiempo promedio", monthlyReport.averageMinutes],
+      [""],
+      ...monthlyReport.byRisk.map((item) => [
+        `Riesgo: ${item.label}`,
+        item.count,
+      ]),
+      [""],
+      ...monthlyReport.byDiagnosis.map((item) => [
+        `Diagnóstico: ${item.label}`,
+        item.count,
+      ]),
+      [""],
+      ...monthlyReport.byArea.map((item) => [`Área: ${item.label}`, item.count]),
+      [""],
+      ...monthlyReport.byCapturer.map((item) => [
+        `Capturista: ${item.label}`,
+        item.count,
+      ]),
+      [""],
+      ...monthlyReport.byMedicine.map((item) => [
+        `Medicamento: ${item.label}`,
+        item.count,
+      ]),
+    ];
+
+    downloadCsv(`reporte-mensual-sos-${reportMonth}.csv`, headers, rows);
+  }
+
+  function printReport() {
+    window.print();
+  }
+
+  if (authLoading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-zinc-950 text-white">
+        <div className="rounded-3xl border border-white/10 bg-white/5 p-8 text-center">
+          <p className="text-sm font-bold uppercase tracking-[0.25em] text-red-400">
             SOS MedicalOps
           </p>
-          <p className="text-xs font-medium text-zinc-400">
-            Centro médico-operativo
-          </p>
+          <p className="mt-3 text-zinc-400">Cargando sesión...</p>
         </div>
       </div>
     );
   }
 
-  function renderDashboard() {
-    return (
-      <div className="space-y-6">
-        <section className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-5">
-          <KpiCard
-            label="Atenciones filtradas"
-            value={kpis.total}
-            helper="Registros visibles"
-            tone="dark"
-          />
-          <KpiCard
-            label="Alertas vitales"
-            value={kpis.vitalAlertsCount}
-            helper="Fuera de rango"
-            tone={kpis.vitalAlertsCount > 0 ? "red" : "neutral"}
-          />
-          <KpiCard
-            label="Riesgo alto/crítico"
-            value={kpis.highRisk}
-            helper="Casos prioritarios"
-            tone={kpis.highRisk > 0 ? "amber" : "neutral"}
-          />
-          <KpiCard
-            label="Tiempo promedio"
-            value={`${kpis.averageMinutes.toFixed(1)} min`}
-            helper="Atención clínica"
-          />
-          <KpiCard
-            label="Inventario bajo"
-            value={kpis.lowStock}
-            helper="Insumos en mínimo"
-            tone={kpis.lowStock > 0 ? "red" : "neutral"}
-          />
-        </section>
+  if (!session) {
+    return <LoginScreen />;
+  }
 
-        <section className="grid grid-cols-1 gap-6 xl:grid-cols-3">
-          <div className="rounded-3xl border border-zinc-200 bg-white p-6 shadow-sm xl:col-span-2">
-            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.25em] text-red-700">
-                  Acción rápida
-                </p>
-                <h2 className="mt-1 text-2xl font-black tracking-tight">
-                  Registrar nueva atención
-                </h2>
-                <p className="mt-1 text-sm text-zinc-500">
-                  Acceso prioritario para operación de enfermería.
-                </p>
-              </div>
+  return (
+    <div className="min-h-screen bg-zinc-100 text-zinc-950">
+      <aside className="fixed left-0 top-0 hidden h-screen w-72 flex-col border-r border-zinc-800 bg-zinc-950 text-white lg:flex">
+        <div className="border-b border-white/10 p-6">
+          <img
+            src="/logo.png"
+            alt="SOS"
+            className="mb-4 h-14 w-auto object-contain"
+          />
+
+          <p className="text-xs font-semibold uppercase tracking-[0.25em] text-red-400">
+            SOS MedicalOps
+          </p>
+
+          <h1 className="mt-2 text-xl font-black leading-tight">
+            Centro de control médico-operativo
+          </h1>
+        </div>
+
+        <nav className="flex-1 space-y-2 overflow-y-auto p-4">
+          {navItems.map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              onClick={() => setActiveModule(item.id)}
+              className={`w-full rounded-2xl px-4 py-3 text-left transition ${
+                activeModule === item.id
+                  ? "bg-red-700 text-white"
+                  : "text-zinc-300 hover:bg-white/10 hover:text-white"
+              }`}
+            >
+              <div className="font-black">{item.label}</div>
+              <div className="text-xs opacity-70">{item.subtitle}</div>
+            </button>
+          ))}
+        </nav>
+
+        <div className="border-t border-white/10 p-4">
+          <div className="rounded-2xl bg-white/5 p-4">
+            <p className="text-xs uppercase tracking-[0.18em] text-zinc-500">
+              Sesión
+            </p>
+            <p className="mt-1 truncate text-sm font-bold">
+              {session.user.email}
+            </p>
+            <p className="mt-1 text-xs text-red-300">
+              Rol: {userRole || "sin rol"}
+            </p>
+          </div>
+
+          <button
+            type="button"
+            onClick={signOut}
+            className="mt-3 w-full rounded-2xl border border-white/10 px-4 py-3 text-sm font-bold text-zinc-300 hover:bg-white/10"
+          >
+            Cerrar sesión
+          </button>
+        </div>
+      </aside>
+
+      <main className="lg:pl-72">
+        <header className="sticky top-0 z-30 border-b border-zinc-200 bg-white/90 px-4 py-4 shadow-sm backdrop-blur md:px-8">
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.25em] text-red-700">
+                SOS — Soluciones Operativas Sierra Madre
+              </p>
+              <h2 className="mt-1 text-2xl font-black tracking-tight">
+                {navItems.find((item) => item.id === activeModule)?.label ||
+                  "Dashboard"}
+              </h2>
+            </div>
+
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+              <select
+                className="rounded-2xl border border-zinc-300 bg-white px-4 py-3 text-sm font-bold lg:hidden"
+                value={activeModule}
+                onChange={(event) => setActiveModule(event.target.value)}
+              >
+                {navItems.map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {item.label}
+                  </option>
+                ))}
+              </select>
 
               <button
                 type="button"
-                onClick={() => setActiveModule("atenciones")}
-                className="rounded-2xl bg-red-700 px-5 py-3 text-sm font-bold text-white shadow-sm hover:bg-red-800"
+                onClick={loadMainData}
+                className="rounded-2xl border border-zinc-300 px-4 py-3 text-sm font-bold text-zinc-700 hover:bg-zinc-50"
               >
-                + Nueva atención
+                Actualizar
               </button>
-            </div>
 
-            <div className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-3">
-              <div className="rounded-2xl bg-zinc-950 p-5 text-white">
-                <p className="text-xs uppercase tracking-[0.2em] text-zinc-400">
-                  Operación
-                </p>
-                <p className="mt-2 text-lg font-bold">Captura rápida</p>
-                <p className="mt-2 text-sm text-zinc-400">
-                  Registro clínico estructurado con signos vitales.
-                </p>
-              </div>
-
-              <div className="rounded-2xl bg-zinc-100 p-5">
-                <p className="text-xs uppercase tracking-[0.2em] text-zinc-500">
-                  Control
-                </p>
-                <p className="mt-2 text-lg font-bold">Trazabilidad</p>
-                <p className="mt-2 text-sm text-zinc-500">
-                  Historial, capturista, filtros y exportación.
-                </p>
-              </div>
-
-              <div className="rounded-2xl bg-red-50 p-5 text-red-950">
-                <p className="text-xs uppercase tracking-[0.2em] text-red-700">
-                  Riesgo
-                </p>
-                <p className="mt-2 text-lg font-bold">Alertas clínicas</p>
-                <p className="mt-2 text-sm text-red-800">
-                  Semáforo operativo para signos fuera de rango.
-                </p>
-              </div>
+              <span className="rounded-2xl bg-zinc-950 px-4 py-3 text-sm font-bold text-white">
+                {userRole || "sin rol"}
+              </span>
             </div>
           </div>
+        </header>
 
-          <div className="rounded-3xl border border-zinc-200 bg-white p-6 shadow-sm">
-            <h3 className="text-lg font-bold">Alertas recientes</h3>
+        <div className="p-4 md:p-8">
+          {loadingData && (
+            <div className="mb-6 rounded-2xl bg-amber-100 px-4 py-3 text-sm font-bold text-amber-900">
+              Cargando información...
+            </div>
+          )}
 
-            <div className="mt-4 space-y-3">
-              {recentVitalAlerts.length > 0 ? (
-                recentVitalAlerts.map((attention) => (
-                  <div
-                    key={attention.id}
-                    className="rounded-2xl border border-red-100 bg-red-50 p-4"
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <p className="font-bold text-red-950">
-                          {attention.patient_name}
-                        </p>
-                        <p className="text-xs text-red-800">
-                          {attention.attention_date} ·{" "}
-                          {attention.area || "Sin área"}
-                        </p>
-                        <p className="mt-1 text-xs text-red-700">
-                          Capturó:{" "}
-                          {attention.created_by_email || "Sin registro"}
-                        </p>
-                      </div>
-                      <span className="rounded-full bg-red-700 px-2 py-1 text-xs font-bold text-white">
-                        alerta
-                      </span>
+          {activeModule === "dashboard" && (
+            <DashboardModule
+              kpis={dashboardKpis}
+              attentions={attentions}
+              medicines={medicines}
+            />
+          )}
+
+          {activeModule === "atenciones" && (
+            <AttentionsModule
+              session={session}
+              userRole={userRole}
+              form={attentionForm}
+              medicines={medicines}
+              attentions={filteredAttentions}
+              filters={filters}
+              uniqueAreas={uniqueAreas}
+              uniqueCapturers={uniqueCapturers}
+              canCreate={canCreateAttention}
+              canDelete={canDeleteAttention}
+              onChangeForm={updateAttentionField}
+              onSubmit={saveAttention}
+              onDelete={deleteAttention}
+              onFilter={updateFilter}
+              onResetFilters={resetFilters}
+              onExport={exportAttentionsCsv}
+            />
+          )}
+
+          {activeModule === "antidoping" && (
+            <AntidopingModule session={session} userRole={userRole} />
+          )}
+
+          {activeModule === "cronicos" && (
+            <ChronicDegenerativeModule session={session} userRole={userRole} />
+          )}
+
+          {activeModule === "inventario" && (
+            <InventoryModule
+              form={medicineForm}
+              medicines={medicines}
+              canCreate={canCreateMedicine}
+              canEdit={canEditMedicine}
+              canDelete={canDeleteMedicine}
+              onChangeForm={updateMedicineField}
+              onSubmit={saveMedicine}
+              onUpdateStock={updateMedicineStock}
+              onDelete={deleteMedicine}
+            />
+          )}
+
+          {activeModule === "reportes" && (
+            <ReportsModule
+              reportMonth={reportMonth}
+              setReportMonth={setReportMonth}
+              monthOptions={monthOptions}
+              monthlyReport={monthlyReport}
+              monthlyAttentions={monthlyAttentions}
+              onExport={exportMonthlyReportCsv}
+              onPrint={printReport}
+            />
+          )}
+        </div>
+      </main>
+
+      <button
+        type="button"
+        onClick={() => setActiveModule("atenciones")}
+        className="fixed bottom-5 right-5 rounded-full bg-red-700 px-5 py-4 text-sm font-black text-white shadow-2xl hover:bg-red-800"
+      >
+        + Atención
+      </button>
+    </div>
+  );
+}
+
+function DashboardModule({ kpis, attentions, medicines }) {
+  const recentAttentions = attentions.slice(0, 6);
+  const lowStock = medicines.filter(
+    (medicine) => Number(medicine.stock) <= Number(medicine.minimum_stock)
+  );
+
+  return (
+    <div className="space-y-6">
+      <section className="grid grid-cols-1 gap-4 md:grid-cols-5">
+        <KpiCard
+          label="Atenciones"
+          value={kpis.total}
+          helper="Registros filtrados"
+          tone="dark"
+        />
+        <KpiCard
+          label="Alto / crítico"
+          value={kpis.highRisk}
+          helper="Riesgo operativo"
+          tone={kpis.highRisk > 0 ? "red" : "neutral"}
+        />
+        <KpiCard
+          label="Alertas vitales"
+          value={kpis.alerts}
+          helper="Signos fuera de rango"
+          tone={kpis.alerts > 0 ? "amber" : "neutral"}
+        />
+        <KpiCard
+          label="Tiempo promedio"
+          value={`${kpis.averageMinutes} min`}
+          helper="Atención clínica"
+        />
+        <KpiCard
+          label="Stock bajo"
+          value={kpis.lowStock}
+          helper="Medicamentos"
+          tone={kpis.lowStock > 0 ? "red" : "neutral"}
+        />
+      </section>
+
+      <section className="grid grid-cols-1 gap-5 xl:grid-cols-2">
+        <div className="rounded-3xl border border-zinc-200 bg-white p-6 shadow-sm">
+          <h3 className="text-xl font-black tracking-tight">
+            Atenciones recientes
+          </h3>
+
+          <div className="mt-5 space-y-3">
+            {recentAttentions.length > 0 ? (
+              recentAttentions.map((attention) => (
+                <div
+                  key={attention.id}
+                  className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4"
+                >
+                  <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+                    <div>
+                      <p className="font-black">{attention.patient_name}</p>
+                      <p className="text-sm text-zinc-500">
+                        {attention.employee_number} ·{" "}
+                        {attention.area || "Sin área"}
+                      </p>
                     </div>
 
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      {attention.vitalAlerts.map((alert) => (
-                        <span
-                          key={alert}
-                          className="rounded-full bg-white px-2 py-1 text-xs font-semibold text-red-800"
-                        >
-                          {alert}
-                        </span>
-                      ))}
-                    </div>
+                    <span
+                      className={`w-fit rounded-full px-2 py-1 text-xs font-bold ring-1 ${getRiskBadgeClass(
+                        attention.risk_level
+                      )}`}
+                    >
+                      {attention.risk_level}
+                    </span>
                   </div>
-                ))
-              ) : (
-                <EmptyState text="Sin alertas vitales recientes." />
-              )}
-            </div>
-          </div>
-        </section>
-      </div>
-    );
-  }
 
-  function renderAttentionForm() {
-    return (
+                  <p className="mt-2 text-sm text-zinc-600">
+                    {attention.diagnosis || "Sin diagnóstico/motivo registrado"}
+                  </p>
+                </div>
+              ))
+            ) : (
+              <EmptyState text="Sin atenciones registradas." />
+            )}
+          </div>
+        </div>
+
+        <div className="rounded-3xl border border-zinc-200 bg-white p-6 shadow-sm">
+          <h3 className="text-xl font-black tracking-tight">
+            Inventario en vigilancia
+          </h3>
+
+          <div className="mt-5 space-y-3">
+            {lowStock.length > 0 ? (
+              lowStock.map((medicine) => (
+                <div
+                  key={medicine.id}
+                  className="rounded-2xl border border-red-200 bg-red-50 p-4 text-red-900"
+                >
+                  <p className="font-black">{medicine.name}</p>
+                  <p className="text-sm">
+                    Stock: {medicine.stock} {medicine.unit} · Mínimo:{" "}
+                    {medicine.minimum_stock}
+                  </p>
+                </div>
+              ))
+            ) : (
+              <EmptyState text="No hay medicamentos debajo del mínimo." />
+            )}
+          </div>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function AttentionsModule({
+  session,
+  userRole,
+  form,
+  medicines,
+  attentions,
+  filters,
+  uniqueAreas,
+  uniqueCapturers,
+  canCreate,
+  canDelete,
+  onChangeForm,
+  onSubmit,
+  onDelete,
+  onFilter,
+  onResetFilters,
+  onExport,
+}) {
+  return (
+    <div className="space-y-6">
       <section className="rounded-3xl border border-zinc-200 bg-white p-6 shadow-sm">
         <div className="mb-5 flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.25em] text-red-700">
-              Registro operativo
+              Atención clínica in-plant
             </p>
             <h2 className="mt-1 text-2xl font-black tracking-tight">
-              Nueva atención médica
+              Registrar atención médica
             </h2>
             <p className="mt-1 text-sm text-zinc-500">
-              Captura rápida para enfermería y operación clínica in-plant.
+              Captura clínica, signos vitales, riesgo y trazabilidad del
+              capturista.
             </p>
           </div>
 
-          <span
-            className={`w-fit rounded-full px-3 py-1 text-xs font-bold ${getRoleBadgeClass(
-              userRole
-            )}`}
-          >
+          <span className="w-fit rounded-full bg-zinc-950 px-3 py-1 text-xs font-bold text-white">
             Rol: {userRole || "cargando"}
           </span>
         </div>
 
-        {canRegisterAttention ? (
+        {canCreate ? (
           <form
-            onSubmit={saveAttention}
-            className="grid grid-cols-1 gap-4 md:grid-cols-3"
+            onSubmit={onSubmit}
+            className="grid grid-cols-1 gap-4 md:grid-cols-4"
           >
             <input
-              className="rounded-2xl border border-zinc-300 bg-white px-4 py-3 outline-none ring-red-700/20 focus:ring-4"
+              className="rounded-2xl border border-zinc-300 px-4 py-3 outline-none ring-red-700/20 focus:ring-4"
               placeholder="Nombre del paciente"
               value={form.patient_name}
               onChange={(event) =>
-                updateField("patient_name", event.target.value)
+                onChangeForm("patient_name", event.target.value)
               }
             />
 
             <input
-              className="rounded-2xl border border-zinc-300 bg-white px-4 py-3 outline-none ring-red-700/20 focus:ring-4"
+              className="rounded-2xl border border-zinc-300 px-4 py-3 outline-none ring-red-700/20 focus:ring-4"
               placeholder="Número de empleado"
               value={form.employee_number}
               onChange={(event) =>
-                updateField("employee_number", event.target.value)
+                onChangeForm("employee_number", event.target.value)
               }
             />
 
             <input
-              className="rounded-2xl border border-zinc-300 bg-white px-4 py-3 outline-none ring-red-700/20 focus:ring-4"
+              className="rounded-2xl border border-zinc-300 px-4 py-3 outline-none ring-red-700/20 focus:ring-4"
               type="date"
               value={form.attention_date}
               onChange={(event) =>
-                updateField("attention_date", event.target.value)
+                onChangeForm("attention_date", event.target.value)
               }
             />
 
             <input
-              className="rounded-2xl border border-zinc-300 bg-white px-4 py-3 outline-none ring-red-700/20 focus:ring-4"
+              className="rounded-2xl border border-zinc-300 px-4 py-3 outline-none ring-red-700/20 focus:ring-4"
               placeholder="Área"
               value={form.area}
-              onChange={(event) => updateField("area", event.target.value)}
+              onChange={(event) => onChangeForm("area", event.target.value)}
             />
 
             <input
-              className="rounded-2xl border border-zinc-300 bg-white px-4 py-3 outline-none ring-red-700/20 focus:ring-4"
+              className="rounded-2xl border border-zinc-300 px-4 py-3 outline-none ring-red-700/20 focus:ring-4 md:col-span-2"
               placeholder="Diagnóstico / motivo"
               value={form.diagnosis}
               onChange={(event) =>
-                updateField("diagnosis", event.target.value)
+                onChangeForm("diagnosis", event.target.value)
               }
             />
 
             <select
-              className="rounded-2xl border border-zinc-300 bg-white px-4 py-3 outline-none ring-red-700/20 focus:ring-4"
+              className="rounded-2xl border border-zinc-300 px-4 py-3 outline-none ring-red-700/20 focus:ring-4"
               value={form.risk_level}
               onChange={(event) =>
-                updateField("risk_level", event.target.value)
+                onChangeForm("risk_level", event.target.value)
               }
             >
               {riskLevels.map((risk) => (
@@ -1332,176 +1440,130 @@ export default function App() {
             </select>
 
             <input
-              className="rounded-2xl border border-zinc-300 bg-white px-4 py-3 outline-none ring-red-700/20 focus:ring-4"
+              className="rounded-2xl border border-zinc-300 px-4 py-3 outline-none ring-red-700/20 focus:ring-4"
+              placeholder="Minutos de atención"
               type="number"
-              min="0"
-              placeholder="Tiempo en minutos"
               value={form.attention_minutes}
               onChange={(event) =>
-                updateField("attention_minutes", event.target.value)
+                onChangeForm("attention_minutes", event.target.value)
               }
             />
 
             <select
-              className="rounded-2xl border border-zinc-300 bg-white px-4 py-3 outline-none ring-red-700/20 focus:ring-4"
+              className="rounded-2xl border border-zinc-300 px-4 py-3 outline-none ring-red-700/20 focus:ring-4 md:col-span-2"
               value={form.medicine_id}
               onChange={(event) =>
-                updateField("medicine_id", event.target.value)
+                onChangeForm("medicine_id", event.target.value)
               }
             >
               <option value="">Sin medicamento</option>
               {medicines.map((medicine) => (
                 <option key={medicine.id} value={medicine.id}>
-                  {medicine.name} | stock: {medicine.stock}
+                  {medicine.name} · stock {medicine.stock} {medicine.unit}
                 </option>
               ))}
             </select>
 
             <input
-              className="rounded-2xl border border-zinc-300 bg-white px-4 py-3 outline-none ring-red-700/20 focus:ring-4"
-              type="number"
-              min="0"
+              className="rounded-2xl border border-zinc-300 px-4 py-3 outline-none ring-red-700/20 focus:ring-4 md:col-span-2"
               placeholder="Cantidad medicamento"
+              type="number"
               value={form.medicine_quantity}
               onChange={(event) =>
-                updateField("medicine_quantity", event.target.value)
+                onChangeForm("medicine_quantity", event.target.value)
               }
             />
 
-            <div className="rounded-3xl border border-zinc-200 bg-zinc-50 p-5 md:col-span-3">
-              <div className="mb-4 flex items-center justify-between">
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-[0.25em] text-zinc-500">
-                    Vigilancia clínica
-                  </p>
-                  <h3 className="mt-1 font-bold">Signos vitales</h3>
-                </div>
-                <span className="rounded-full bg-zinc-950 px-3 py-1 text-xs font-bold text-white">
-                  Semáforo activo
-                </span>
-              </div>
-
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
-                <label className="block">
-                  <span className="mb-1 block text-sm font-bold text-zinc-700">
-                    FC
-                  </span>
-                  <input
-                    className="w-full rounded-2xl border border-zinc-300 px-4 py-3 outline-none ring-red-700/20 focus:ring-4"
-                    type="number"
-                    min="20"
-                    max="250"
-                    placeholder="82"
-                    value={form.heart_rate}
-                    onChange={(event) =>
-                      updateField("heart_rate", event.target.value)
-                    }
-                  />
-                  <span className="mt-1 block text-xs text-zinc-500">lpm</span>
-                </label>
-
-                <label className="block">
-                  <span className="mb-1 block text-sm font-bold text-zinc-700">
-                    FR
-                  </span>
-                  <input
-                    className="w-full rounded-2xl border border-zinc-300 px-4 py-3 outline-none ring-red-700/20 focus:ring-4"
-                    type="number"
-                    min="5"
-                    max="80"
-                    placeholder="18"
-                    value={form.respiratory_rate}
-                    onChange={(event) =>
-                      updateField("respiratory_rate", event.target.value)
-                    }
-                  />
-                  <span className="mt-1 block text-xs text-zinc-500">rpm</span>
-                </label>
-
-                <label className="block">
-                  <span className="mb-1 block text-sm font-bold text-zinc-700">
-                    TA
-                  </span>
-                  <input
-                    className="w-full rounded-2xl border border-zinc-300 px-4 py-3 outline-none ring-red-700/20 focus:ring-4"
-                    type="text"
-                    inputMode="numeric"
-                    placeholder="120/80"
-                    value={form.blood_pressure}
-                    onChange={(event) =>
-                      updateField(
-                        "blood_pressure",
-                        formatBloodPressureInput(event.target.value)
-                      )
-                    }
-                  />
-                  <span className="mt-1 block text-xs text-zinc-500">mmHg</span>
-                </label>
-
-                <label className="block">
-                  <span className="mb-1 block text-sm font-bold text-zinc-700">
-                    Temp
-                  </span>
-                  <input
-                    className="w-full rounded-2xl border border-zinc-300 px-4 py-3 outline-none ring-red-700/20 focus:ring-4"
-                    type="number"
-                    min="30"
-                    max="45"
-                    step="0.1"
-                    placeholder="36.7"
-                    value={form.temperature}
-                    onChange={(event) =>
-                      updateField("temperature", event.target.value)
-                    }
-                  />
-                  <span className="mt-1 block text-xs text-zinc-500">°C</span>
-                </label>
-              </div>
-            </div>
-
-            <textarea
-              className="min-h-28 rounded-2xl border border-zinc-300 bg-white px-4 py-3 outline-none ring-red-700/20 focus:ring-4 md:col-span-3"
-              placeholder="Notas clínicas u observaciones operativas"
-              value={form.notes}
-              onChange={(event) => updateField("notes", event.target.value)}
+            <input
+              className="rounded-2xl border border-zinc-300 px-4 py-3 outline-none ring-red-700/20 focus:ring-4"
+              placeholder="FC"
+              type="number"
+              value={form.heart_rate}
+              onChange={(event) =>
+                onChangeForm("heart_rate", event.target.value)
+              }
             />
 
-            <div className="rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-600 md:col-span-3">
-              Esta atención se guardará como capturada por:{" "}
+            <input
+              className="rounded-2xl border border-zinc-300 px-4 py-3 outline-none ring-red-700/20 focus:ring-4"
+              placeholder="FR"
+              type="number"
+              value={form.respiratory_rate}
+              onChange={(event) =>
+                onChangeForm("respiratory_rate", event.target.value)
+              }
+            />
+
+            <input
+              className="rounded-2xl border border-zinc-300 px-4 py-3 outline-none ring-red-700/20 focus:ring-4"
+              placeholder="TA sistólica"
+              type="number"
+              value={form.systolic_bp}
+              onChange={(event) =>
+                onChangeForm("systolic_bp", event.target.value)
+              }
+            />
+
+            <input
+              className="rounded-2xl border border-zinc-300 px-4 py-3 outline-none ring-red-700/20 focus:ring-4"
+              placeholder="TA diastólica"
+              type="number"
+              value={form.diastolic_bp}
+              onChange={(event) =>
+                onChangeForm("diastolic_bp", event.target.value)
+              }
+            />
+
+            <input
+              className="rounded-2xl border border-zinc-300 px-4 py-3 outline-none ring-red-700/20 focus:ring-4"
+              placeholder="Temperatura"
+              type="number"
+              step="0.1"
+              value={form.temperature}
+              onChange={(event) =>
+                onChangeForm("temperature", event.target.value)
+              }
+            />
+
+            <textarea
+              className="min-h-24 rounded-2xl border border-zinc-300 px-4 py-3 outline-none ring-red-700/20 focus:ring-4 md:col-span-3"
+              placeholder="Notas"
+              value={form.notes}
+              onChange={(event) => onChangeForm("notes", event.target.value)}
+            />
+
+            <div className="rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-600 md:col-span-4">
+              Captura por:{" "}
               <strong>{session?.user?.email || "usuario actual"}</strong>
             </div>
 
-            <button className="rounded-2xl bg-red-700 px-5 py-4 font-black text-white shadow-sm hover:bg-red-800 md:col-span-3">
-              Guardar atención médica
+            <button className="rounded-2xl bg-red-700 px-5 py-4 font-black text-white shadow-sm hover:bg-red-800 md:col-span-4">
+              Guardar atención
             </button>
           </form>
         ) : (
           <EmptyState text="Tu rol actual no permite registrar atenciones." />
         )}
       </section>
-    );
-  }
 
-  function renderFiltersAndHistory() {
-    return (
       <section className="rounded-3xl border border-zinc-200 bg-white p-6 shadow-sm">
         <div className="mb-5 flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.25em] text-red-700">
-              Trazabilidad
+              Historial clínico
             </p>
             <h2 className="mt-1 text-2xl font-black tracking-tight">
-              Historial y filtros
+              Atenciones registradas
             </h2>
             <p className="mt-1 text-sm text-zinc-500">
-              Registros filtrados: {filteredAttentions.length}
+              Registros filtrados: {attentions.length}
             </p>
           </div>
 
           <div className="flex flex-col gap-2 sm:flex-row">
             <button
               type="button"
-              onClick={resetFilters}
+              onClick={onResetFilters}
               className="rounded-2xl border border-zinc-300 px-4 py-3 text-sm font-bold text-zinc-700 hover:bg-zinc-50"
             >
               Limpiar filtros
@@ -1509,7 +1571,7 @@ export default function App() {
 
             <button
               type="button"
-              onClick={exportFilteredToCsv}
+              onClick={onExport}
               className="rounded-2xl bg-zinc-950 px-4 py-3 text-sm font-bold text-white hover:bg-zinc-800"
             >
               Exportar CSV
@@ -1522,20 +1584,20 @@ export default function App() {
             className="rounded-2xl border border-zinc-300 px-4 py-3"
             type="date"
             value={filters.startDate}
-            onChange={(event) => updateFilter("startDate", event.target.value)}
+            onChange={(event) => onFilter("startDate", event.target.value)}
           />
 
           <input
             className="rounded-2xl border border-zinc-300 px-4 py-3"
             type="date"
             value={filters.endDate}
-            onChange={(event) => updateFilter("endDate", event.target.value)}
+            onChange={(event) => onFilter("endDate", event.target.value)}
           />
 
           <select
             className="rounded-2xl border border-zinc-300 px-4 py-3"
-            value={filters.riskLevel}
-            onChange={(event) => updateFilter("riskLevel", event.target.value)}
+            value={filters.risk}
+            onChange={(event) => onFilter("risk", event.target.value)}
           >
             <option value="Todos">Todos los riesgos</option>
             {riskLevels.map((risk) => (
@@ -1548,11 +1610,23 @@ export default function App() {
           <select
             className="rounded-2xl border border-zinc-300 px-4 py-3"
             value={filters.area}
-            onChange={(event) => updateFilter("area", event.target.value)}
+            onChange={(event) => onFilter("area", event.target.value)}
           >
             {uniqueAreas.map((area) => (
               <option key={area} value={area}>
                 {area === "Todas" ? "Todas las áreas" : area}
+              </option>
+            ))}
+          </select>
+
+          <select
+            className="rounded-2xl border border-zinc-300 px-4 py-3"
+            value={filters.capturer}
+            onChange={(event) => onFilter("capturer", event.target.value)}
+          >
+            {uniqueCapturers.map((capturer) => (
+              <option key={capturer} value={capturer}>
+                {capturer === "Todos" ? "Todos los capturistas" : capturer}
               </option>
             ))}
           </select>
@@ -1562,38 +1636,31 @@ export default function App() {
             placeholder="No. empleado"
             value={filters.employeeNumber}
             onChange={(event) =>
-              updateFilter("employeeNumber", event.target.value)
+              onFilter("employeeNumber", event.target.value)
             }
-          />
-
-          <input
-            className="rounded-2xl border border-zinc-300 px-4 py-3"
-            placeholder="Capturó"
-            value={filters.capturedBy}
-            onChange={(event) => updateFilter("capturedBy", event.target.value)}
           />
 
           <input
             className="rounded-2xl border border-zinc-300 px-4 py-3"
             placeholder="Buscar"
             value={filters.searchText}
-            onChange={(event) => updateFilter("searchText", event.target.value)}
+            onChange={(event) => onFilter("searchText", event.target.value)}
           />
+
+          <label className="flex items-center gap-2 rounded-2xl border border-zinc-300 px-4 py-3 text-sm font-bold text-zinc-700 xl:col-span-7">
+            <input
+              type="checkbox"
+              checked={filters.vitalAlertsOnly}
+              onChange={(event) =>
+                onFilter("vitalAlertsOnly", event.target.checked)
+              }
+            />
+            Mostrar solo atenciones con alertas de signos vitales
+          </label>
         </div>
 
-        <label className="mt-4 flex items-center gap-2 text-sm font-bold text-zinc-700">
-          <input
-            type="checkbox"
-            checked={filters.onlyVitalAlerts}
-            onChange={(event) =>
-              updateFilter("onlyVitalAlerts", event.target.checked)
-            }
-          />
-          Mostrar solo atenciones con alertas vitales
-        </label>
-
         <div className="mt-6 overflow-x-auto">
-          <table className="w-full min-w-[1350px] text-sm">
+          <table className="w-full min-w-[1500px] text-sm">
             <thead>
               <tr className="border-b bg-zinc-950 text-left text-xs uppercase tracking-wide text-white">
                 <th className="p-3">Fecha</th>
@@ -1602,24 +1669,18 @@ export default function App() {
                 <th className="p-3">Área</th>
                 <th className="p-3">Diagnóstico</th>
                 <th className="p-3">Riesgo</th>
-                <th className="p-3">Tiempo</th>
-                <th className="p-3">Capturó</th>
                 <th className="p-3">Signos vitales</th>
-                <th className="p-3">Alerta</th>
+                <th className="p-3">Alertas</th>
+                <th className="p-3">Medicamento</th>
+                <th className="p-3">Capturó</th>
                 <th className="p-3">Notas</th>
                 {canDelete && <th className="p-3 text-right">Acciones</th>}
               </tr>
             </thead>
 
             <tbody>
-              {filteredAttentions.map((attention) => {
-                const vitalAlerts = evaluateVitalAlerts({
-                  heart_rate: attention.heart_rate,
-                  respiratory_rate: attention.respiratory_rate,
-                  systolic_bp: attention.systolic_bp,
-                  diastolic_bp: attention.diastolic_bp,
-                  temperature: attention.temperature,
-                });
+              {attentions.map((attention) => {
+                const alerts = buildVitalAlerts(attention);
 
                 return (
                   <tr
@@ -1642,63 +1703,35 @@ export default function App() {
                       </span>
                     </td>
 
-                    <td className="p-3">{attention.attention_minutes} min</td>
+                    <td className="p-3 text-xs">
+                      FC {attention.heart_rate || "-"} · FR{" "}
+                      {attention.respiratory_rate || "-"} · TA{" "}
+                      {attention.systolic_bp || "-"}/
+                      {attention.diastolic_bp || "-"} · Temp{" "}
+                      {attention.temperature || "-"}
+                    </td>
+
+                    <td className="p-3">
+                      {alerts.length > 0 ? (
+                        <span className="rounded-full bg-red-100 px-2 py-1 text-xs font-bold text-red-800">
+                          {alerts.join(" | ")}
+                        </span>
+                      ) : (
+                        "-"
+                      )}
+                    </td>
+
+                    <td className="p-3">
+                      {attention.medicines?.name || "-"}{" "}
+                      {attention.medicine_quantity
+                        ? `(${attention.medicine_quantity})`
+                        : ""}
+                    </td>
 
                     <td className="p-3">
                       <span className="rounded-full bg-zinc-100 px-2 py-1 text-xs font-bold text-zinc-700">
                         {attention.created_by_email || "Sin registro"}
                       </span>
-                    </td>
-
-                    <td className="p-3">
-                      <div className="space-y-1 text-xs text-zinc-700">
-                        <div>
-                          <strong>FC:</strong>{" "}
-                          {attention.heart_rate
-                            ? `${attention.heart_rate} lpm`
-                            : "-"}
-                        </div>
-
-                        <div>
-                          <strong>FR:</strong>{" "}
-                          {attention.respiratory_rate
-                            ? `${attention.respiratory_rate} rpm`
-                            : "-"}
-                        </div>
-
-                        <div>
-                          <strong>TA:</strong>{" "}
-                          {attention.systolic_bp && attention.diastolic_bp
-                            ? `${attention.systolic_bp}/${attention.diastolic_bp} mmHg`
-                            : "-"}
-                        </div>
-
-                        <div>
-                          <strong>Temp:</strong>{" "}
-                          {attention.temperature
-                            ? `${attention.temperature} °C`
-                            : "-"}
-                        </div>
-                      </div>
-                    </td>
-
-                    <td className="p-3">
-                      {vitalAlerts.length > 0 ? (
-                        <div className="space-y-1">
-                          {vitalAlerts.map((alert) => (
-                            <span
-                              key={alert}
-                              className="block rounded-full bg-red-100 px-2 py-1 text-xs font-bold text-red-800"
-                            >
-                              {alert}
-                            </span>
-                          ))}
-                        </div>
-                      ) : (
-                        <span className="rounded-full bg-emerald-100 px-2 py-1 text-xs font-bold text-emerald-800">
-                          Normal
-                        </span>
-                      )}
                     </td>
 
                     <td className="p-3">{attention.notes || "-"}</td>
@@ -1707,7 +1740,7 @@ export default function App() {
                       <td className="p-3 text-right">
                         <button
                           type="button"
-                          onClick={() => deleteAttention(attention.id)}
+                          onClick={() => onDelete(attention.id)}
                           className="rounded-xl px-3 py-2 text-xs font-bold text-red-700 hover:bg-red-50"
                         >
                           Eliminar
@@ -1720,199 +1753,197 @@ export default function App() {
             </tbody>
           </table>
 
-          {filteredAttentions.length === 0 && (
+          {attentions.length === 0 && (
             <div className="mt-4">
-              <EmptyState text="No hay registros con los filtros actuales." />
+              <EmptyState text="No hay atenciones con los filtros actuales." />
             </div>
           )}
         </div>
       </section>
-    );
-  }
+    </div>
+  );
+}
 
-  function renderAtenciones() {
-    return (
-      <div className="space-y-6">
-        <section className="grid grid-cols-1 gap-4 md:grid-cols-4">
-          <KpiCard
-            label="Registros"
-            value={filteredAttentions.length}
-            tone="dark"
-          />
-          <KpiCard
-            label="Alertas"
-            value={kpis.vitalAlertsCount}
-            tone={kpis.vitalAlertsCount > 0 ? "red" : "neutral"}
-          />
-          <KpiCard
-            label="Alto / crítico"
-            value={kpis.highRisk}
-            tone={kpis.highRisk > 0 ? "amber" : "neutral"}
-          />
-          <KpiCard
-            label="Promedio"
-            value={`${kpis.averageMinutes.toFixed(1)} min`}
-          />
-        </section>
+function InventoryModule({
+  form,
+  medicines,
+  canCreate,
+  canEdit,
+  canDelete,
+  onChangeForm,
+  onSubmit,
+  onUpdateStock,
+  onDelete,
+}) {
+  return (
+    <div className="space-y-6">
+      <section className="rounded-3xl border border-zinc-200 bg-white p-6 shadow-sm">
+        <div className="mb-5">
+          <p className="text-xs font-semibold uppercase tracking-[0.25em] text-red-700">
+            Control de insumos
+          </p>
+          <h2 className="mt-1 text-2xl font-black tracking-tight">
+            Inventario de medicamentos
+          </h2>
+        </div>
 
-        {renderAttentionForm()}
-        {renderFiltersAndHistory()}
-      </div>
-    );
-  }
+        {canCreate ? (
+          <form
+            onSubmit={onSubmit}
+            className="grid grid-cols-1 gap-4 md:grid-cols-4"
+          >
+            <input
+              className="rounded-2xl border border-zinc-300 px-4 py-3 outline-none ring-red-700/20 focus:ring-4 md:col-span-2"
+              placeholder="Medicamento"
+              value={form.name}
+              onChange={(event) => onChangeForm("name", event.target.value)}
+            />
 
-  function renderInventory() {
-    return (
-      <div className="space-y-6">
-        <section className="grid grid-cols-1 gap-4 md:grid-cols-3">
-          <KpiCard
-            label="Medicamentos"
-            value={medicines.length}
-            helper="Catálogo activo"
-            tone="dark"
-          />
-          <KpiCard
-            label="Stock bajo"
-            value={lowStockMedicines.length}
-            helper="Requiere revisión"
-            tone={lowStockMedicines.length > 0 ? "red" : "neutral"}
-          />
-          <KpiCard
-            label="Control"
-            value={canEditInventory ? "Editable" : "Lectura"}
-            helper="Según rol activo"
-          />
-        </section>
+            <input
+              className="rounded-2xl border border-zinc-300 px-4 py-3 outline-none ring-red-700/20 focus:ring-4"
+              placeholder="Stock"
+              type="number"
+              value={form.stock}
+              onChange={(event) => onChangeForm("stock", event.target.value)}
+            />
 
-        <section className="rounded-3xl border border-zinc-200 bg-white p-6 shadow-sm">
-          <div className="mb-5">
-            <p className="text-xs font-semibold uppercase tracking-[0.25em] text-red-700">
-              Insumos
-            </p>
-            <h2 className="mt-1 text-2xl font-black tracking-tight">
-              Inventario médico
-            </h2>
-            <p className="mt-1 text-sm text-zinc-500">
-              Control visual de stock y mínimos operativos.
-            </p>
-          </div>
+            <input
+              className="rounded-2xl border border-zinc-300 px-4 py-3 outline-none ring-red-700/20 focus:ring-4"
+              placeholder="Mínimo"
+              type="number"
+              value={form.minimum_stock}
+              onChange={(event) =>
+                onChangeForm("minimum_stock", event.target.value)
+              }
+            />
 
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[800px] text-sm">
-              <thead>
-                <tr className="border-b bg-zinc-950 text-left text-xs uppercase tracking-wide text-white">
-                  <th className="p-3">Medicamento</th>
-                  <th className="p-3">Stock</th>
-                  <th className="p-3">Mínimo</th>
-                  <th className="p-3">Unidad</th>
-                  <th className="p-3">Estado</th>
-                </tr>
-              </thead>
+            <input
+              className="rounded-2xl border border-zinc-300 px-4 py-3 outline-none ring-red-700/20 focus:ring-4 md:col-span-2"
+              placeholder="Unidad"
+              value={form.unit}
+              onChange={(event) => onChangeForm("unit", event.target.value)}
+            />
 
-              <tbody>
-                {medicines.map((medicine) => {
-                  const isLow =
-                    Number(medicine.stock || 0) <=
-                    Number(medicine.minimum_stock || 0);
+            <button className="rounded-2xl bg-red-700 px-5 py-4 font-black text-white shadow-sm hover:bg-red-800 md:col-span-2">
+              Agregar medicamento
+            </button>
+          </form>
+        ) : (
+          <EmptyState text="Tu rol actual no permite agregar medicamentos." />
+        )}
+      </section>
 
-                  return (
-                    <tr key={medicine.id} className="border-b hover:bg-zinc-50">
-                      <td className="p-3 font-bold">{medicine.name}</td>
+      <section className="rounded-3xl border border-zinc-200 bg-white p-6 shadow-sm">
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[900px] text-sm">
+            <thead>
+              <tr className="border-b bg-zinc-950 text-left text-xs uppercase tracking-wide text-white">
+                <th className="p-3">Medicamento</th>
+                <th className="p-3">Stock</th>
+                <th className="p-3">Mínimo</th>
+                <th className="p-3">Unidad</th>
+                <th className="p-3">Estado</th>
+                {(canEdit || canDelete) && (
+                  <th className="p-3 text-right">Acciones</th>
+                )}
+              </tr>
+            </thead>
 
-                      <td className="p-3">
-                        {canEditInventory ? (
-                          <input
-                            className="w-28 rounded-xl border border-zinc-300 px-3 py-2"
-                            type="number"
-                            min="0"
-                            value={medicine.stock}
-                            onChange={(event) =>
-                              updateStock(medicine.id, event.target.value)
-                            }
-                          />
-                        ) : (
-                          medicine.stock
+            <tbody>
+              {medicines.map((medicine) => {
+                const isLow =
+                  Number(medicine.stock) <= Number(medicine.minimum_stock);
+
+                return (
+                  <tr
+                    key={medicine.id}
+                    className="border-b align-top hover:bg-zinc-50"
+                  >
+                    <td className="p-3 font-bold">{medicine.name}</td>
+
+                    <td className="p-3">
+                      {canEdit ? (
+                        <input
+                          className="w-24 rounded-xl border border-zinc-300 px-3 py-2"
+                          type="number"
+                          value={medicine.stock}
+                          onChange={(event) =>
+                            onUpdateStock(medicine, event.target.value)
+                          }
+                        />
+                      ) : (
+                        medicine.stock
+                      )}
+                    </td>
+
+                    <td className="p-3">{medicine.minimum_stock}</td>
+                    <td className="p-3">{medicine.unit}</td>
+
+                    <td className="p-3">
+                      {isLow ? (
+                        <span className="rounded-full bg-red-100 px-2 py-1 text-xs font-bold text-red-800">
+                          Stock bajo
+                        </span>
+                      ) : (
+                        <span className="rounded-full bg-emerald-100 px-2 py-1 text-xs font-bold text-emerald-800">
+                          Suficiente
+                        </span>
+                      )}
+                    </td>
+
+                    {(canEdit || canDelete) && (
+                      <td className="p-3 text-right">
+                        {canDelete && (
+                          <button
+                            type="button"
+                            onClick={() => onDelete(medicine.id)}
+                            className="rounded-xl px-3 py-2 text-xs font-bold text-red-700 hover:bg-red-50"
+                          >
+                            Eliminar
+                          </button>
                         )}
                       </td>
+                    )}
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
 
-                      <td className="p-3">{medicine.minimum_stock}</td>
-                      <td className="p-3">{medicine.unit}</td>
-
-                      <td className="p-3">
-                        {isLow ? (
-                          <span className="rounded-full bg-red-100 px-2 py-1 text-xs font-bold text-red-800">
-                            Bajo
-                          </span>
-                        ) : (
-                          <span className="rounded-full bg-emerald-100 px-2 py-1 text-xs font-bold text-emerald-800">
-                            Suficiente
-                          </span>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-
-            {medicines.length === 0 && (
-              <div className="mt-4">
-                <EmptyState text="No hay medicamentos registrados." />
-              </div>
-            )}
-          </div>
-        </section>
-      </div>
-    );
-  }
-
-  function ReportList({ title, items, danger = false, wide = false }) {
-    return (
-      <div
-        className={`rounded-3xl border border-zinc-200 p-5 ${
-          wide ? "lg:col-span-2" : ""
-        }`}
-      >
-        <h3 className="mb-4 text-lg font-black tracking-tight">{title}</h3>
-
-        <div className="space-y-2">
-          {items.length > 0 ? (
-            items.map((item) => (
-              <div
-                key={item.label}
-                className={`flex items-center justify-between rounded-2xl px-4 py-3 text-sm ${
-                  danger ? "bg-red-50 text-red-900" : "bg-zinc-50 text-zinc-900"
-                }`}
-              >
-                <span>{item.label}</span>
-                <strong>{item.count}</strong>
-              </div>
-            ))
-          ) : (
-            <EmptyState text="Sin registros en el periodo." />
+          {medicines.length === 0 && (
+            <div className="mt-4">
+              <EmptyState text="No hay medicamentos registrados." />
+            </div>
           )}
         </div>
-      </div>
-    );
-  }
+      </section>
+    </div>
+  );
+}
 
-  function renderReports() {
-    return (
-      <section
-        id="reporte-mensual"
-        className="rounded-3xl border border-zinc-200 bg-white p-6 shadow-sm"
-      >
+function ReportsModule({
+  reportMonth,
+  setReportMonth,
+  monthOptions,
+  monthlyReport,
+  monthlyAttentions,
+  onExport,
+  onPrint,
+}) {
+  return (
+    <div className="space-y-6">
+      <section className="rounded-3xl border border-zinc-200 bg-white p-6 shadow-sm">
         <div className="mb-6 flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.25em] text-red-700">
-              Vista ejecutiva
+              Inteligencia operativa
             </p>
             <h2 className="mt-1 text-2xl font-black tracking-tight">
-              Reporte mensual ejecutivo
+              Reporte mensual médico
             </h2>
             <p className="mt-1 text-sm text-zinc-500">
-              {getMonthLabel(reportMonth)} · {monthlyReport.total} atenciones
-              registradas
+              {getMonthLabel(reportMonth)} · {monthlyAttentions.length}{" "}
+              atenciones registradas
             </p>
           </div>
 
@@ -1931,15 +1962,15 @@ export default function App() {
 
             <button
               type="button"
-              onClick={exportMonthlyReportToCsv}
+              onClick={onExport}
               className="rounded-2xl bg-zinc-950 px-4 py-3 text-sm font-bold text-white hover:bg-zinc-800"
             >
-              Exportar CSV
+              Exportar reporte
             </button>
 
             <button
               type="button"
-              onClick={printMonthlyReport}
+              onClick={onPrint}
               className="rounded-2xl border border-zinc-300 px-4 py-3 text-sm font-bold text-zinc-700 hover:bg-zinc-50"
             >
               Imprimir / PDF
@@ -1950,324 +1981,35 @@ export default function App() {
         <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
           <KpiCard label="Total" value={monthlyReport.total} tone="dark" />
           <KpiCard
-            label="Promedio"
-            value={`${monthlyReport.averageMinutes.toFixed(1)} min`}
-          />
-          <KpiCard
             label="Alto / crítico"
             value={monthlyReport.highRisk}
-            tone={monthlyReport.highRisk > 0 ? "amber" : "neutral"}
+            tone={monthlyReport.highRisk > 0 ? "red" : "neutral"}
           />
           <KpiCard
             label="Alertas vitales"
-            value={monthlyReport.vitalAlertsCount}
-            tone={monthlyReport.vitalAlertsCount > 0 ? "red" : "neutral"}
+            value={monthlyReport.vitalAlerts}
+            tone={monthlyReport.vitalAlerts > 0 ? "amber" : "neutral"}
+          />
+          <KpiCard
+            label="Tiempo promedio"
+            value={`${monthlyReport.averageMinutes} min`}
           />
         </div>
 
         <div className="mt-6 grid grid-cols-1 gap-5 lg:grid-cols-2">
           <ReportList
             title="Distribución por riesgo"
-            items={monthlyReport.riskDistribution}
+            items={monthlyReport.byRisk}
           />
           <ReportList
-            title="Principales diagnósticos / motivos"
-            items={monthlyReport.topDiagnoses}
+            title="Diagnósticos / motivos"
+            items={monthlyReport.byDiagnosis}
           />
-          <ReportList
-            title="Áreas con mayor demanda"
-            items={monthlyReport.topAreas}
-          />
-          <ReportList
-            title="Capturistas con mayor actividad"
-            items={monthlyReport.topCapturers}
-          />
-          <ReportList
-            title="Medicamentos más utilizados"
-            items={monthlyReport.topMedicines}
-          />
-          <ReportList
-            title="Alertas vitales detectadas"
-            items={monthlyReport.topVitalAlerts}
-            danger
-          />
+          <ReportList title="Áreas" items={monthlyReport.byArea} />
+          <ReportList title="Capturistas" items={monthlyReport.byCapturer} />
+          <ReportList title="Medicamentos" items={monthlyReport.byMedicine} />
         </div>
       </section>
-    );
-  }
-
-  if (checkingSession) {
-    return (
-      <main className="flex min-h-screen items-center justify-center bg-zinc-950 text-white">
-        Validando sesión...
-      </main>
-    );
-  }
-
-  if (recoveryMode) {
-    return (
-      <main className="flex min-h-screen items-center justify-center bg-[radial-gradient(circle_at_top,#3f0d12,#09090b_45%)] px-5">
-        <section className="w-full max-w-md rounded-3xl border border-white/10 bg-white p-7 shadow-2xl">
-          <h1 className="text-2xl font-black text-zinc-950">
-            Cambiar contraseña
-          </h1>
-
-          <p className="mt-2 text-sm text-zinc-600">
-            Ingresa tu nueva contraseña.
-          </p>
-
-          <form onSubmit={updatePassword} className="mt-6 space-y-4">
-            <input
-              className="w-full rounded-2xl border border-zinc-300 px-4 py-3"
-              type="password"
-              placeholder="Nueva contraseña"
-              value={newPassword}
-              onChange={(event) => setNewPassword(event.target.value)}
-              required
-            />
-
-            <input
-              className="w-full rounded-2xl border border-zinc-300 px-4 py-3"
-              type="password"
-              placeholder="Confirmar contraseña"
-              value={confirmPassword}
-              onChange={(event) => setConfirmPassword(event.target.value)}
-              required
-            />
-
-            <button className="w-full rounded-2xl bg-red-700 px-4 py-3 font-black text-white hover:bg-red-800">
-              Actualizar contraseña
-            </button>
-          </form>
-        </section>
-      </main>
-    );
-  }
-
-  if (!session) {
-    return (
-      <main className="flex min-h-screen items-center justify-center bg-[radial-gradient(circle_at_top,#3f0d12,#09090b_45%)] px-5">
-        <section className="w-full max-w-md rounded-3xl border border-white/10 bg-white p-7 shadow-2xl">
-          <div className="mb-8 flex items-center gap-3">
-            {!logoFailed ? (
-              <img
-                src="/logo.png"
-                alt="SOS"
-                onError={() => setLogoFailed(true)}
-                className="h-14 w-14 rounded-2xl object-contain"
-              />
-            ) : (
-              <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-red-700 text-xl font-black text-white">
-                SOS
-              </div>
-            )}
-
-            <div>
-              <h1 className="text-2xl font-black tracking-tight text-zinc-950">
-                SOS MedicalOps
-              </h1>
-              <p className="text-sm font-medium text-zinc-500">
-                Centro médico-operativo
-              </p>
-            </div>
-          </div>
-
-          <form onSubmit={login} className="space-y-4">
-            <input
-              className="w-full rounded-2xl border border-zinc-300 px-4 py-3 outline-none ring-red-700/20 focus:ring-4"
-              type="email"
-              placeholder="Correo electrónico"
-              value={email}
-              onChange={(event) => setEmail(event.target.value)}
-              required
-            />
-
-            <input
-              className="w-full rounded-2xl border border-zinc-300 px-4 py-3 outline-none ring-red-700/20 focus:ring-4"
-              type="password"
-              placeholder="Contraseña"
-              value={password}
-              onChange={(event) => setPassword(event.target.value)}
-              required
-            />
-
-            <button className="w-full rounded-2xl bg-red-700 px-4 py-3 font-black text-white shadow-sm hover:bg-red-800">
-              Ingresar
-            </button>
-
-            <button
-              type="button"
-              onClick={sendRecoveryEmail}
-              className="w-full rounded-2xl border border-zinc-300 px-4 py-3 text-sm font-bold text-zinc-700 hover:bg-zinc-50"
-            >
-              Olvidé mi contraseña
-            </button>
-
-            {recoveryEmailSent && (
-              <p className="text-sm font-bold text-emerald-700">
-                Correo de recuperación enviado.
-              </p>
-            )}
-          </form>
-        </section>
-      </main>
-    );
-  }
-
-  if (isBlocked) {
-    return (
-      <main className="flex min-h-screen items-center justify-center bg-zinc-950 px-5">
-        <section className="w-full max-w-md rounded-3xl bg-white p-7 shadow-2xl">
-          <h1 className="text-2xl font-black text-red-700">Acceso bloqueado</h1>
-          <p className="mt-2 text-sm text-zinc-600">
-            Tu usuario no tiene acceso operativo al dashboard. Contacta al
-            administrador.
-          </p>
-          <button
-            onClick={logout}
-            className="mt-6 w-full rounded-2xl bg-zinc-950 px-4 py-3 font-black text-white hover:bg-zinc-800"
-          >
-            Cerrar sesión
-          </button>
-        </section>
-      </main>
-    );
-  }
-
-  return (
-    <main className="min-h-screen bg-zinc-100 text-zinc-950">
-      <aside className="fixed inset-y-0 left-0 hidden w-72 border-r border-white/10 bg-zinc-950 p-5 text-white lg:block">
-        <BrandBlock />
-
-        <nav className="space-y-2">
-          {navItems.map((item) => {
-            const active = activeModule === item.id;
-
-            return (
-              <button
-                key={item.id}
-                type="button"
-                onClick={() => setActiveModule(item.id)}
-                className={`w-full rounded-2xl px-4 py-3 text-left transition ${
-                  active
-                    ? "bg-red-700 text-white shadow-sm"
-                    : "text-zinc-300 hover:bg-white/10 hover:text-white"
-                }`}
-              >
-                <span className="block font-black">{item.label}</span>
-                <span className="block text-xs opacity-70">{item.subtitle}</span>
-              </button>
-            );
-          })}
-        </nav>
-
-        <div className="absolute bottom-5 left-5 right-5 rounded-3xl border border-white/10 bg-white/5 p-4">
-          <p className="text-xs uppercase tracking-[0.2em] text-zinc-500">
-            Usuario activo
-          </p>
-          <p className="mt-2 truncate text-sm font-bold text-white">
-            {session?.user?.email}
-          </p>
-          <span
-            className={`mt-3 inline-block rounded-full px-3 py-1 text-xs font-bold ${getRoleBadgeClass(
-              userRole
-            )}`}
-          >
-            {userRole || "cargando"}
-          </span>
-
-          <button
-            onClick={logout}
-            className="mt-4 w-full rounded-2xl border border-white/10 px-4 py-2 text-sm font-bold text-zinc-300 hover:bg-white/10 hover:text-white"
-          >
-            Cerrar sesión
-          </button>
-        </div>
-      </aside>
-
-      <section className="lg:pl-72">
-        <header className="sticky top-0 z-20 border-b border-zinc-200 bg-white/90 px-5 py-4 backdrop-blur">
-          <div className="mx-auto flex max-w-7xl flex-col gap-4 md:flex-row md:items-center md:justify-between">
-            <div className="flex items-center gap-4">
-              <div className="lg:hidden">
-                <BrandBlock compact />
-              </div>
-
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.25em] text-red-700">
-                  SOS MedicalOps
-                </p>
-                <h1 className="mt-1 text-2xl font-black tracking-tight">
-                  {currentModule?.label || "Dashboard"}
-                </h1>
-                <p className="text-sm text-zinc-500">
-                  {currentModule?.subtitle ||
-                    "Centro de control médico-operativo"}
-                </p>
-              </div>
-            </div>
-
-            <div className="flex flex-col gap-2 sm:flex-row">
-              <button
-                type="button"
-                onClick={() => setActiveModule("atenciones")}
-                className="rounded-2xl bg-red-700 px-4 py-3 text-sm font-black text-white hover:bg-red-800"
-              >
-                + Nueva atención
-              </button>
-
-              <button
-                type="button"
-                onClick={loadData}
-                className="rounded-2xl border border-zinc-300 px-4 py-3 text-sm font-bold text-zinc-700 hover:bg-zinc-50"
-              >
-                Actualizar
-              </button>
-            </div>
-          </div>
-
-          <div className="mx-auto mt-4 flex max-w-7xl gap-2 overflow-x-auto lg:hidden">
-            {navItems.map((item) => (
-              <button
-                key={item.id}
-                type="button"
-                onClick={() => setActiveModule(item.id)}
-                className={`whitespace-nowrap rounded-full px-4 py-2 text-sm font-bold ${
-                  activeModule === item.id
-                    ? "bg-zinc-950 text-white"
-                    : "bg-zinc-100 text-zinc-700"
-                }`}
-              >
-                {item.label}
-              </button>
-            ))}
-          </div>
-        </header>
-
-        <main className="mx-auto max-w-7xl space-y-6 px-5 py-6">
-          {loadingData && (
-            <div className="rounded-2xl bg-amber-100 px-4 py-3 text-sm font-bold text-amber-900">
-              Cargando información desde Supabase...
-            </div>
-          )}
-
-          {activeModule === "dashboard" && renderDashboard()}
-          {activeModule === "atenciones" && renderAtenciones()}
-          {activeModule === "antidoping" && (
-            <AntidopingModule session={session} userRole={userRole} />
-          )}
-          {activeModule === "inventario" && renderInventory()}
-          {activeModule === "reportes" && renderReports()}
-        </main>
-      </section>
-
-      <button
-        type="button"
-        onClick={() => setActiveModule("atenciones")}
-        className="fixed bottom-5 right-5 rounded-full bg-red-700 px-5 py-4 text-sm font-black text-white shadow-2xl shadow-red-900/30 hover:bg-red-800"
-      >
-        + Atención
-      </button>
-    </main>
+    </div>
   );
 }
