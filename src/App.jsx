@@ -14,12 +14,10 @@ function createInitialForm() {
     attention_minutes: 15,
     medicine_id: "",
     medicine_quantity: 0,
-
     heart_rate: "",
     respiratory_rate: "",
     blood_pressure: "",
     temperature: "",
-
     notes: "",
   };
 }
@@ -79,9 +77,7 @@ function evaluateVitalAlerts(vitals) {
 function formatBloodPressureInput(value) {
   const digits = value.replace(/\D/g, "").slice(0, 6);
 
-  if (digits.length <= 3) {
-    return digits;
-  }
+  if (digits.length <= 3) return digits;
 
   if (digits.length === 4) {
     const firstThree = Number(digits.slice(0, 3));
@@ -98,6 +94,16 @@ function formatBloodPressureInput(value) {
   }
 
   return `${digits.slice(0, 3)}/${digits.slice(3, 6)}`;
+}
+
+function escapeCsv(value) {
+  if (value === null || value === undefined) return "";
+  const stringValue = String(value).replace(/"/g, '""');
+  return `"${stringValue}"`;
+}
+
+function getTodayForFileName() {
+  return new Date().toISOString().slice(0, 10);
 }
 
 export default function App() {
@@ -117,6 +123,16 @@ export default function App() {
   const [medicines, setMedicines] = useState([]);
   const [attentions, setAttentions] = useState([]);
   const [form, setForm] = useState(createInitialForm());
+
+  const [filters, setFilters] = useState({
+    startDate: "",
+    endDate: "",
+    riskLevel: "Todos",
+    area: "Todas",
+    employeeNumber: "",
+    searchText: "",
+    onlyVitalAlerts: false,
+  });
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
@@ -152,24 +168,94 @@ export default function App() {
   );
 
   const canEditInventory = ["admin", "medico", "enfermeria"].includes(userRole);
-
   const canDelete = userRole === "admin";
 
-  const kpis = useMemo(() => {
-    const total = attentions.length;
+  const uniqueAreas = useMemo(() => {
+    const areas = attentions
+      .map((item) => item.area)
+      .filter(Boolean)
+      .map((area) => area.trim())
+      .filter(Boolean);
 
-    const highRisk = attentions.filter((item) =>
+    return ["Todas", ...Array.from(new Set(areas)).sort()];
+  }, [attentions]);
+
+  const filteredAttentions = useMemo(() => {
+    return attentions.filter((attention) => {
+      const attentionDate = attention.attention_date || "";
+
+      if (filters.startDate && attentionDate < filters.startDate) return false;
+      if (filters.endDate && attentionDate > filters.endDate) return false;
+
+      if (
+        filters.riskLevel !== "Todos" &&
+        attention.risk_level !== filters.riskLevel
+      ) {
+        return false;
+      }
+
+      if (filters.area !== "Todas" && attention.area !== filters.area) {
+        return false;
+      }
+
+      if (
+        filters.employeeNumber.trim() &&
+        !String(attention.employee_number || "")
+          .toLowerCase()
+          .includes(filters.employeeNumber.trim().toLowerCase())
+      ) {
+        return false;
+      }
+
+      if (filters.searchText.trim()) {
+        const searchBase = [
+          attention.patient_name,
+          attention.employee_number,
+          attention.area,
+          attention.diagnosis,
+          attention.risk_level,
+          attention.notes,
+        ]
+          .filter(Boolean)
+          .join(" ")
+          .toLowerCase();
+
+        if (!searchBase.includes(filters.searchText.trim().toLowerCase())) {
+          return false;
+        }
+      }
+
+      if (filters.onlyVitalAlerts) {
+        const vitalAlerts = evaluateVitalAlerts({
+          heart_rate: attention.heart_rate,
+          respiratory_rate: attention.respiratory_rate,
+          systolic_bp: attention.systolic_bp,
+          diastolic_bp: attention.diastolic_bp,
+          temperature: attention.temperature,
+        });
+
+        if (vitalAlerts.length === 0) return false;
+      }
+
+      return true;
+    });
+  }, [attentions, filters]);
+
+  const kpis = useMemo(() => {
+    const total = filteredAttentions.length;
+
+    const highRisk = filteredAttentions.filter((item) =>
       ["Alto", "Crítico"].includes(item.risk_level)
     ).length;
 
-    const totalMinutes = attentions.reduce(
+    const totalMinutes = filteredAttentions.reduce(
       (sum, item) => sum + Number(item.attention_minutes || 0),
       0
     );
 
     const averageMinutes = total ? totalMinutes / total : 0;
 
-    const vitalAlertsCount = attentions.filter((attention) => {
+    const vitalAlertsCount = filteredAttentions.filter((attention) => {
       return (
         evaluateVitalAlerts({
           heart_rate: attention.heart_rate,
@@ -188,7 +274,7 @@ export default function App() {
       medicinesCount: medicines.length,
       vitalAlertsCount,
     };
-  }, [attentions, medicines]);
+  }, [filteredAttentions, medicines]);
 
   async function loadUserRole() {
     if (!session?.user?.id) return;
@@ -322,6 +408,106 @@ export default function App() {
     }));
   }
 
+  function updateFilter(field, value) {
+    setFilters((current) => ({
+      ...current,
+      [field]: value,
+    }));
+  }
+
+  function resetFilters() {
+    setFilters({
+      startDate: "",
+      endDate: "",
+      riskLevel: "Todos",
+      area: "Todas",
+      employeeNumber: "",
+      searchText: "",
+      onlyVitalAlerts: false,
+    });
+  }
+
+  function exportFilteredToCsv() {
+    if (filteredAttentions.length === 0) {
+      alert("No hay registros filtrados para exportar.");
+      return;
+    }
+
+    const headers = [
+      "Fecha",
+      "Paciente",
+      "Numero de empleado",
+      "Area",
+      "Diagnostico/Motivo",
+      "Riesgo",
+      "Tiempo de atencion min",
+      "Medicamento",
+      "Cantidad medicamento",
+      "FC lpm",
+      "FR rpm",
+      "TA mmHg",
+      "Temperatura C",
+      "Alertas vitales",
+      "Notas",
+    ];
+
+    const rows = filteredAttentions.map((attention) => {
+      const medicine = medicines.find((item) => item.id === attention.medicine_id);
+
+      const vitalAlerts = evaluateVitalAlerts({
+        heart_rate: attention.heart_rate,
+        respiratory_rate: attention.respiratory_rate,
+        systolic_bp: attention.systolic_bp,
+        diastolic_bp: attention.diastolic_bp,
+        temperature: attention.temperature,
+      });
+
+      const bloodPressure =
+        attention.systolic_bp && attention.diastolic_bp
+          ? `${attention.systolic_bp}/${attention.diastolic_bp}`
+          : "";
+
+      return [
+        attention.attention_date,
+        attention.patient_name,
+        attention.employee_number,
+        attention.area,
+        attention.diagnosis,
+        attention.risk_level,
+        attention.attention_minutes,
+        medicine?.name || "",
+        attention.medicine_quantity || "",
+        attention.heart_rate || "",
+        attention.respiratory_rate || "",
+        bloodPressure,
+        attention.temperature || "",
+        vitalAlerts.join(" | "),
+        attention.notes || "",
+      ];
+    });
+
+    const csvContent =
+      "\uFEFF" +
+      [headers, ...rows]
+        .map((row) => row.map((cell) => escapeCsv(cell)).join(","))
+        .join("\n");
+
+    const blob = new Blob([csvContent], {
+      type: "text/csv;charset=utf-8;",
+    });
+
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+
+    link.href = url;
+    link.download = `reporte-atenciones-sos-${getTodayForFileName()}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+
+    URL.revokeObjectURL(url);
+  }
+
   async function saveAttention(event) {
     event.preventDefault();
 
@@ -385,9 +571,7 @@ export default function App() {
           "\n\n¿Deseas guardar la atención de todos modos?"
       );
 
-      if (!proceed) {
-        return;
-      }
+      if (!proceed) return;
     }
 
     const payload = {
@@ -400,14 +584,12 @@ export default function App() {
       attention_minutes: Number(form.attention_minutes || 0),
       medicine_id: form.medicine_id || null,
       medicine_quantity: Number(form.medicine_quantity || 0),
-
       heart_rate: form.heart_rate === "" ? null : Number(form.heart_rate),
       respiratory_rate:
         form.respiratory_rate === "" ? null : Number(form.respiratory_rate),
       systolic_bp: systolicBp,
       diastolic_bp: diastolicBp,
       temperature: form.temperature === "" ? null : Number(form.temperature),
-
       notes: form.notes.trim() || null,
     };
 
@@ -647,6 +829,141 @@ export default function App() {
             Cargando información desde Supabase...
           </div>
         )}
+
+        <section className="rounded-2xl bg-white p-5 shadow-sm">
+          <div className="mb-4 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+            <div>
+              <h2 className="text-lg font-semibold">Filtros y exportación</h2>
+              <p className="text-sm text-zinc-500">
+                Registros filtrados: {filteredAttentions.length}
+              </p>
+            </div>
+
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <button
+                type="button"
+                onClick={resetFilters}
+                className="rounded-xl border border-zinc-300 px-4 py-2 text-sm font-semibold text-zinc-700 hover:bg-zinc-50"
+              >
+                Limpiar filtros
+              </button>
+
+              <button
+                type="button"
+                onClick={exportFilteredToCsv}
+                className="rounded-xl bg-zinc-950 px-4 py-2 text-sm font-semibold text-white hover:bg-zinc-800"
+              >
+                Exportar Excel CSV
+              </button>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-3 xl:grid-cols-6">
+            <label className="block">
+              <span className="mb-1 block text-sm font-medium text-zinc-700">
+                Fecha inicial
+              </span>
+              <input
+                className="w-full rounded-xl border border-zinc-300 px-3 py-2"
+                type="date"
+                value={filters.startDate}
+                onChange={(event) =>
+                  updateFilter("startDate", event.target.value)
+                }
+              />
+            </label>
+
+            <label className="block">
+              <span className="mb-1 block text-sm font-medium text-zinc-700">
+                Fecha final
+              </span>
+              <input
+                className="w-full rounded-xl border border-zinc-300 px-3 py-2"
+                type="date"
+                value={filters.endDate}
+                onChange={(event) =>
+                  updateFilter("endDate", event.target.value)
+                }
+              />
+            </label>
+
+            <label className="block">
+              <span className="mb-1 block text-sm font-medium text-zinc-700">
+                Riesgo
+              </span>
+              <select
+                className="w-full rounded-xl border border-zinc-300 px-3 py-2"
+                value={filters.riskLevel}
+                onChange={(event) =>
+                  updateFilter("riskLevel", event.target.value)
+                }
+              >
+                <option value="Todos">Todos</option>
+                {riskLevels.map((risk) => (
+                  <option key={risk} value={risk}>
+                    {risk}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label className="block">
+              <span className="mb-1 block text-sm font-medium text-zinc-700">
+                Área
+              </span>
+              <select
+                className="w-full rounded-xl border border-zinc-300 px-3 py-2"
+                value={filters.area}
+                onChange={(event) => updateFilter("area", event.target.value)}
+              >
+                {uniqueAreas.map((area) => (
+                  <option key={area} value={area}>
+                    {area}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label className="block">
+              <span className="mb-1 block text-sm font-medium text-zinc-700">
+                No. empleado
+              </span>
+              <input
+                className="w-full rounded-xl border border-zinc-300 px-3 py-2"
+                placeholder="Buscar empleado"
+                value={filters.employeeNumber}
+                onChange={(event) =>
+                  updateFilter("employeeNumber", event.target.value)
+                }
+              />
+            </label>
+
+            <label className="block">
+              <span className="mb-1 block text-sm font-medium text-zinc-700">
+                Búsqueda general
+              </span>
+              <input
+                className="w-full rounded-xl border border-zinc-300 px-3 py-2"
+                placeholder="Paciente, diagnóstico, notas..."
+                value={filters.searchText}
+                onChange={(event) =>
+                  updateFilter("searchText", event.target.value)
+                }
+              />
+            </label>
+          </div>
+
+          <label className="mt-4 flex items-center gap-2 text-sm font-medium text-zinc-700">
+            <input
+              type="checkbox"
+              checked={filters.onlyVitalAlerts}
+              onChange={(event) =>
+                updateFilter("onlyVitalAlerts", event.target.checked)
+              }
+            />
+            Mostrar solo atenciones con alertas vitales
+          </label>
+        </section>
 
         <div className="grid grid-cols-1 gap-4 md:grid-cols-5">
           <div className="rounded-2xl bg-white p-5 shadow-sm">
@@ -962,7 +1279,7 @@ export default function App() {
               </thead>
 
               <tbody>
-                {attentions.map((attention) => {
+                {filteredAttentions.map((attention) => {
                   const vitalAlerts = evaluateVitalAlerts({
                     heart_rate: attention.heart_rate,
                     respiratory_rate: attention.respiratory_rate,
