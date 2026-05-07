@@ -1,5 +1,20 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { supabase } from "./lib/supabaseClient";
+
+const initialForm = {
+  patient_name: "",
+  employee_number: "",
+  attention_date: new Date().toISOString().slice(0, 10),
+  area: "",
+  diagnosis: "",
+  risk_level: "Bajo",
+  attention_minutes: 15,
+  medicine_id: "",
+  medicine_quantity: 0,
+  notes: "",
+};
+
+const riskLevels = ["Bajo", "Medio", "Alto", "Crítico"];
 
 export default function App() {
   const [session, setSession] = useState(null);
@@ -9,21 +24,15 @@ export default function App() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
 
+  const [recoveryMode, setRecoveryMode] = useState(false);
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [recoveryEmailSent, setRecoveryEmailSent] = useState(false);
+
+  const [userRole, setUserRole] = useState(null);
   const [medicines, setMedicines] = useState([]);
   const [attentions, setAttentions] = useState([]);
-
-  const [form, setForm] = useState({
-    patient_name: "",
-    employee_number: "",
-    attention_date: new Date().toISOString().slice(0, 10),
-    area: "",
-    diagnosis: "",
-    risk_level: "Bajo",
-    attention_minutes: 15,
-    medicine_id: "",
-    medicine_quantity: 0,
-    notes: "",
-  });
+  const [form, setForm] = useState(initialForm);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
@@ -32,8 +41,13 @@ export default function App() {
     });
 
     const { data: listener } = supabase.auth.onAuthStateChange(
-      (_event, currentSession) => {
+      (event, currentSession) => {
         setSession(currentSession);
+
+        if (event === "PASSWORD_RECOVERY") {
+          setRecoveryMode(true);
+          setCheckingSession(false);
+        }
       }
     );
 
@@ -44,9 +58,63 @@ export default function App() {
 
   useEffect(() => {
     if (session) {
+      loadUserRole();
       loadData();
     }
   }, [session]);
+
+  const canRegisterAttention = ["admin", "medico", "enfermeria"].includes(
+    userRole
+  );
+
+  const canEditInventory = ["admin", "medico", "enfermeria"].includes(userRole);
+
+  const canDelete = userRole === "admin";
+
+  const kpis = useMemo(() => {
+    const total = attentions.length;
+    const highRisk = attentions.filter((item) =>
+      ["Alto", "Crítico"].includes(item.risk_level)
+    ).length;
+
+    const totalMinutes = attentions.reduce(
+      (sum, item) => sum + Number(item.attention_minutes || 0),
+      0
+    );
+
+    const averageMinutes = total ? totalMinutes / total : 0;
+
+    return {
+      total,
+      highRisk,
+      averageMinutes,
+      medicinesCount: medicines.length,
+    };
+  }, [attentions, medicines]);
+
+  async function loadUserRole() {
+    if (!session?.user?.id) return;
+
+    const { data, error } = await supabase
+      .from("user_roles")
+      .select("role")
+      .eq("user_id", session.user.id)
+      .maybeSingle();
+
+    if (error) {
+      alert("No se pudo cargar el rol del usuario: " + error.message);
+      setUserRole("sin_rol");
+      return;
+    }
+
+    if (!data) {
+      alert("Este usuario no tiene rol asignado en Supabase.");
+      setUserRole("sin_rol");
+      return;
+    }
+
+    setUserRole(data.role);
+  }
 
   async function loadData() {
     setLoadingData(true);
@@ -89,9 +157,62 @@ export default function App() {
     }
   }
 
-  async function logout() {
+  async function sendRecoveryEmail() {
+    if (!email.trim()) {
+      alert("Primero escribe tu correo electrónico.");
+      return;
+    }
+
+    const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
+      redirectTo: window.location.origin,
+    });
+
+    if (error) {
+      alert("No se pudo enviar el correo de recuperación: " + error.message);
+      return;
+    }
+
+    setRecoveryEmailSent(true);
+    alert("Correo de recuperación enviado. Revisa tu bandeja de entrada.");
+  }
+
+  async function updatePassword(event) {
+    event.preventDefault();
+
+    if (newPassword.length < 8) {
+      alert("La nueva contraseña debe tener al menos 8 caracteres.");
+      return;
+    }
+
+    if (newPassword !== confirmPassword) {
+      alert("Las contraseñas no coinciden.");
+      return;
+    }
+
+    const { error } = await supabase.auth.updateUser({
+      password: newPassword,
+    });
+
+    if (error) {
+      alert("No se pudo actualizar la contraseña: " + error.message);
+      return;
+    }
+
+    alert("Contraseña actualizada correctamente. Inicia sesión de nuevo.");
+
+    setNewPassword("");
+    setConfirmPassword("");
+    setRecoveryMode(false);
+
     await supabase.auth.signOut();
     setSession(null);
+  }
+
+  async function logout() {
+    await supabase.auth.signOut();
+
+    setSession(null);
+    setUserRole(null);
     setMedicines([]);
     setAttentions([]);
   }
@@ -105,6 +226,11 @@ export default function App() {
 
   async function saveAttention(event) {
     event.preventDefault();
+
+    if (!canRegisterAttention) {
+      alert("Tu rol no permite registrar atenciones.");
+      return;
+    }
 
     if (!form.patient_name.trim()) {
       alert("Captura el nombre del paciente.");
@@ -161,27 +287,104 @@ export default function App() {
     }
 
     setAttentions((current) => [data, ...current]);
-
-    setForm({
-      patient_name: "",
-      employee_number: "",
-      attention_date: new Date().toISOString().slice(0, 10),
-      area: "",
-      diagnosis: "",
-      risk_level: "Bajo",
-      attention_minutes: 15,
-      medicine_id: "",
-      medicine_quantity: 0,
-      notes: "",
-    });
+    setForm(initialForm);
 
     await loadData();
+  }
+
+  async function deleteAttention(id) {
+    if (!canDelete) {
+      alert("Solo el rol admin puede eliminar registros.");
+      return;
+    }
+
+    if (!confirm("¿Eliminar esta atención?")) return;
+
+    const { error } = await supabase.from("attentions").delete().eq("id", id);
+
+    if (error) {
+      alert("No se pudo eliminar la atención: " + error.message);
+      return;
+    }
+
+    setAttentions((current) => current.filter((item) => item.id !== id));
+  }
+
+  async function updateStock(medicineId, newValue) {
+    if (!canEditInventory) {
+      alert("Tu rol no permite modificar inventario.");
+      return;
+    }
+
+    const stock = Number(newValue || 0);
+
+    const { error } = await supabase
+      .from("medicines")
+      .update({ stock })
+      .eq("id", medicineId);
+
+    if (error) {
+      alert("No se pudo actualizar el stock: " + error.message);
+      return;
+    }
+
+    setMedicines((current) =>
+      current.map((item) => (item.id === medicineId ? { ...item, stock } : item))
+    );
   }
 
   if (checkingSession) {
     return (
       <main className="flex min-h-screen items-center justify-center bg-zinc-950 text-white">
         Validando sesión...
+      </main>
+    );
+  }
+
+  if (recoveryMode) {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-zinc-950 px-5">
+        <section className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
+          <h1 className="text-2xl font-bold text-zinc-950">
+            Cambiar contraseña
+          </h1>
+
+          <p className="mt-2 text-sm text-zinc-600">
+            Ingresa tu nueva contraseña.
+          </p>
+
+          <form onSubmit={updatePassword} className="mt-6 space-y-4">
+            <label className="block">
+              <span className="text-sm font-medium text-zinc-700">
+                Nueva contraseña
+              </span>
+              <input
+                className="mt-1 w-full rounded-xl border border-zinc-300 px-3 py-2"
+                type="password"
+                value={newPassword}
+                onChange={(event) => setNewPassword(event.target.value)}
+                required
+              />
+            </label>
+
+            <label className="block">
+              <span className="text-sm font-medium text-zinc-700">
+                Confirmar contraseña
+              </span>
+              <input
+                className="mt-1 w-full rounded-xl border border-zinc-300 px-3 py-2"
+                type="password"
+                value={confirmPassword}
+                onChange={(event) => setConfirmPassword(event.target.value)}
+                required
+              />
+            </label>
+
+            <button className="w-full rounded-xl bg-red-700 px-4 py-3 font-semibold text-white hover:bg-red-800">
+              Actualizar contraseña
+            </button>
+          </form>
+        </section>
       </main>
     );
   }
@@ -193,8 +396,9 @@ export default function App() {
           <h1 className="text-2xl font-bold text-zinc-950">
             Dashboard Médico SOS
           </h1>
+
           <p className="mt-2 text-sm text-zinc-600">
-            Inicia sesión con el usuario creado en Supabase.
+            Inicia sesión con tu usuario autorizado.
           </p>
 
           <form onSubmit={login} className="mt-6 space-y-4">
@@ -227,6 +431,20 @@ export default function App() {
             <button className="w-full rounded-xl bg-red-700 px-4 py-3 font-semibold text-white hover:bg-red-800">
               Ingresar
             </button>
+
+            <button
+              type="button"
+              onClick={sendRecoveryEmail}
+              className="w-full rounded-xl border border-zinc-300 px-4 py-3 text-sm font-semibold text-zinc-700 hover:bg-zinc-50"
+            >
+              Olvidé mi contraseña
+            </button>
+
+            {recoveryEmailSent && (
+              <p className="text-sm font-medium text-emerald-700">
+                Correo de recuperación enviado.
+              </p>
+            )}
           </form>
         </section>
       </main>
@@ -236,16 +454,22 @@ export default function App() {
   return (
     <main className="min-h-screen bg-zinc-100 text-zinc-950">
       <header className="bg-zinc-950 px-6 py-6 text-white">
-        <div className="mx-auto flex max-w-7xl items-center justify-between gap-4">
+        <div className="mx-auto flex max-w-7xl flex-col gap-4 md:flex-row md:items-end md:justify-between">
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.3em] text-red-500">
               SOS · Salud ocupacional
             </p>
+
             <h1 className="mt-2 text-3xl font-bold">
               Dashboard de Atenciones Médicas
             </h1>
+
             <p className="mt-1 text-sm text-zinc-300">
               Conectado a Supabase.
+            </p>
+
+            <p className="mt-1 text-sm text-zinc-400">
+              Rol activo: {userRole || "cargando..."}
             </p>
           </div>
 
@@ -265,143 +489,159 @@ export default function App() {
           </div>
         )}
 
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
           <div className="rounded-2xl bg-white p-5 shadow-sm">
-            <p className="text-sm text-zinc-500">Atenciones registradas</p>
-            <p className="mt-2 text-3xl font-bold">{attentions.length}</p>
+            <p className="text-sm text-zinc-500">Atenciones</p>
+            <p className="mt-2 text-3xl font-bold">{kpis.total}</p>
           </div>
 
           <div className="rounded-2xl bg-white p-5 shadow-sm">
-            <p className="text-sm text-zinc-500">Medicamentos en inventario</p>
-            <p className="mt-2 text-3xl font-bold">{medicines.length}</p>
+            <p className="text-sm text-zinc-500">Medicamentos</p>
+            <p className="mt-2 text-3xl font-bold">{kpis.medicinesCount}</p>
           </div>
 
           <div className="rounded-2xl bg-white p-5 shadow-sm">
             <p className="text-sm text-zinc-500">Riesgo alto/crítico</p>
+            <p className="mt-2 text-3xl font-bold">{kpis.highRisk}</p>
+          </div>
+
+          <div className="rounded-2xl bg-white p-5 shadow-sm">
+            <p className="text-sm text-zinc-500">Tiempo promedio</p>
             <p className="mt-2 text-3xl font-bold">
-              {
-                attentions.filter((item) =>
-                  ["Alto", "Crítico"].includes(item.risk_level)
-                ).length
-              }
+              {kpis.averageMinutes.toFixed(1)} min
             </p>
           </div>
         </div>
 
-        <section className="rounded-2xl bg-white p-5 shadow-sm">
-          <h2 className="mb-4 text-lg font-semibold">
-            Registrar atención médica
-          </h2>
+        {canRegisterAttention ? (
+          <section className="rounded-2xl bg-white p-5 shadow-sm">
+            <h2 className="mb-4 text-lg font-semibold">
+              Registrar atención médica
+            </h2>
 
-          <form
-            onSubmit={saveAttention}
-            className="grid grid-cols-1 gap-4 md:grid-cols-3"
-          >
-            <input
-              className="rounded-xl border border-zinc-300 px-3 py-2"
-              placeholder="Nombre del paciente"
-              value={form.patient_name}
-              onChange={(event) =>
-                updateField("patient_name", event.target.value)
-              }
-            />
-
-            <input
-              className="rounded-xl border border-zinc-300 px-3 py-2"
-              placeholder="Número de empleado"
-              value={form.employee_number}
-              onChange={(event) =>
-                updateField("employee_number", event.target.value)
-              }
-            />
-
-            <input
-              className="rounded-xl border border-zinc-300 px-3 py-2"
-              type="date"
-              value={form.attention_date}
-              onChange={(event) =>
-                updateField("attention_date", event.target.value)
-              }
-            />
-
-            <input
-              className="rounded-xl border border-zinc-300 px-3 py-2"
-              placeholder="Área"
-              value={form.area}
-              onChange={(event) => updateField("area", event.target.value)}
-            />
-
-            <input
-              className="rounded-xl border border-zinc-300 px-3 py-2"
-              placeholder="Diagnóstico / motivo"
-              value={form.diagnosis}
-              onChange={(event) => updateField("diagnosis", event.target.value)}
-            />
-
-            <select
-              className="rounded-xl border border-zinc-300 px-3 py-2"
-              value={form.risk_level}
-              onChange={(event) => updateField("risk_level", event.target.value)}
+            <form
+              onSubmit={saveAttention}
+              className="grid grid-cols-1 gap-4 md:grid-cols-3"
             >
-              <option value="Bajo">Bajo</option>
-              <option value="Medio">Medio</option>
-              <option value="Alto">Alto</option>
-              <option value="Crítico">Crítico</option>
-            </select>
+              <input
+                className="rounded-xl border border-zinc-300 px-3 py-2"
+                placeholder="Nombre del paciente"
+                value={form.patient_name}
+                onChange={(event) =>
+                  updateField("patient_name", event.target.value)
+                }
+              />
 
-            <input
-              className="rounded-xl border border-zinc-300 px-3 py-2"
-              type="number"
-              min="0"
-              placeholder="Tiempo en minutos"
-              value={form.attention_minutes}
-              onChange={(event) =>
-                updateField("attention_minutes", event.target.value)
-              }
-            />
+              <input
+                className="rounded-xl border border-zinc-300 px-3 py-2"
+                placeholder="Número de empleado"
+                value={form.employee_number}
+                onChange={(event) =>
+                  updateField("employee_number", event.target.value)
+                }
+              />
 
-            <select
-              className="rounded-xl border border-zinc-300 px-3 py-2"
-              value={form.medicine_id}
-              onChange={(event) => updateField("medicine_id", event.target.value)}
-            >
-              <option value="">Sin medicamento</option>
-              {medicines.map((medicine) => (
-                <option key={medicine.id} value={medicine.id}>
-                  {medicine.name} | stock: {medicine.stock}
-                </option>
-              ))}
-            </select>
+              <input
+                className="rounded-xl border border-zinc-300 px-3 py-2"
+                type="date"
+                value={form.attention_date}
+                onChange={(event) =>
+                  updateField("attention_date", event.target.value)
+                }
+              />
 
-            <input
-              className="rounded-xl border border-zinc-300 px-3 py-2"
-              type="number"
-              min="0"
-              placeholder="Cantidad medicamento"
-              value={form.medicine_quantity}
-              onChange={(event) =>
-                updateField("medicine_quantity", event.target.value)
-              }
-            />
+              <input
+                className="rounded-xl border border-zinc-300 px-3 py-2"
+                placeholder="Área"
+                value={form.area}
+                onChange={(event) => updateField("area", event.target.value)}
+              />
 
-            <textarea
-              className="rounded-xl border border-zinc-300 px-3 py-2 md:col-span-3"
-              placeholder="Notas"
-              value={form.notes}
-              onChange={(event) => updateField("notes", event.target.value)}
-            />
+              <input
+                className="rounded-xl border border-zinc-300 px-3 py-2"
+                placeholder="Diagnóstico / motivo"
+                value={form.diagnosis}
+                onChange={(event) =>
+                  updateField("diagnosis", event.target.value)
+                }
+              />
 
-            <button className="rounded-xl bg-red-700 px-5 py-3 font-semibold text-white hover:bg-red-800 md:col-span-3">
-              Guardar atención
-            </button>
-          </form>
-        </section>
+              <select
+                className="rounded-xl border border-zinc-300 px-3 py-2"
+                value={form.risk_level}
+                onChange={(event) =>
+                  updateField("risk_level", event.target.value)
+                }
+              >
+                {riskLevels.map((risk) => (
+                  <option key={risk} value={risk}>
+                    {risk}
+                  </option>
+                ))}
+              </select>
+
+              <input
+                className="rounded-xl border border-zinc-300 px-3 py-2"
+                type="number"
+                min="0"
+                placeholder="Tiempo en minutos"
+                value={form.attention_minutes}
+                onChange={(event) =>
+                  updateField("attention_minutes", event.target.value)
+                }
+              />
+
+              <select
+                className="rounded-xl border border-zinc-300 px-3 py-2"
+                value={form.medicine_id}
+                onChange={(event) =>
+                  updateField("medicine_id", event.target.value)
+                }
+              >
+                <option value="">Sin medicamento</option>
+                {medicines.map((medicine) => (
+                  <option key={medicine.id} value={medicine.id}>
+                    {medicine.name} | stock: {medicine.stock}
+                  </option>
+                ))}
+              </select>
+
+              <input
+                className="rounded-xl border border-zinc-300 px-3 py-2"
+                type="number"
+                min="0"
+                placeholder="Cantidad medicamento"
+                value={form.medicine_quantity}
+                onChange={(event) =>
+                  updateField("medicine_quantity", event.target.value)
+                }
+              />
+
+              <textarea
+                className="rounded-xl border border-zinc-300 px-3 py-2 md:col-span-3"
+                placeholder="Notas"
+                value={form.notes}
+                onChange={(event) => updateField("notes", event.target.value)}
+              />
+
+              <button className="rounded-xl bg-red-700 px-5 py-3 font-semibold text-white hover:bg-red-800 md:col-span-3">
+                Guardar atención
+              </button>
+            </form>
+          </section>
+        ) : (
+          <section className="rounded-2xl bg-white p-5 shadow-sm">
+            <p className="text-sm text-zinc-600">
+              Tu rol actual no permite registrar atenciones.
+            </p>
+          </section>
+        )}
 
         <section className="rounded-2xl bg-white p-5 shadow-sm">
           <h2 className="mb-4 text-lg font-semibold">Inventario</h2>
 
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[600px] text-sm">
+            <table className="w-full min-w-[700px] text-sm">
               <thead>
                 <tr className="border-b bg-zinc-50 text-left text-xs uppercase text-zinc-500">
                   <th className="p-3">Medicamento</th>
@@ -410,11 +650,28 @@ export default function App() {
                   <th className="p-3">Unidad</th>
                 </tr>
               </thead>
+
               <tbody>
                 {medicines.map((medicine) => (
                   <tr key={medicine.id} className="border-b">
                     <td className="p-3 font-medium">{medicine.name}</td>
-                    <td className="p-3">{medicine.stock}</td>
+
+                    <td className="p-3">
+                      {canEditInventory ? (
+                        <input
+                          className="w-24 rounded-lg border border-zinc-300 px-2 py-1"
+                          type="number"
+                          min="0"
+                          value={medicine.stock}
+                          onChange={(event) =>
+                            updateStock(medicine.id, event.target.value)
+                          }
+                        />
+                      ) : (
+                        medicine.stock
+                      )}
+                    </td>
+
                     <td className="p-3">{medicine.minimum_stock}</td>
                     <td className="p-3">{medicine.unit}</td>
                   </tr>
@@ -425,10 +682,12 @@ export default function App() {
         </section>
 
         <section className="rounded-2xl bg-white p-5 shadow-sm">
-          <h2 className="mb-4 text-lg font-semibold">Historial de atenciones</h2>
+          <h2 className="mb-4 text-lg font-semibold">
+            Historial de atenciones
+          </h2>
 
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[900px] text-sm">
+            <table className="w-full min-w-[1000px] text-sm">
               <thead>
                 <tr className="border-b bg-zinc-50 text-left text-xs uppercase text-zinc-500">
                   <th className="p-3">Fecha</th>
@@ -439,19 +698,35 @@ export default function App() {
                   <th className="p-3">Riesgo</th>
                   <th className="p-3">Tiempo</th>
                   <th className="p-3">Notas</th>
+                  {canDelete && <th className="p-3 text-right">Acciones</th>}
                 </tr>
               </thead>
+
               <tbody>
                 {attentions.map((attention) => (
                   <tr key={attention.id} className="border-b align-top">
                     <td className="p-3">{attention.attention_date}</td>
-                    <td className="p-3 font-medium">{attention.patient_name}</td>
+                    <td className="p-3 font-medium">
+                      {attention.patient_name}
+                    </td>
                     <td className="p-3">{attention.employee_number}</td>
                     <td className="p-3">{attention.area || "-"}</td>
                     <td className="p-3">{attention.diagnosis || "-"}</td>
                     <td className="p-3">{attention.risk_level}</td>
                     <td className="p-3">{attention.attention_minutes} min</td>
                     <td className="p-3">{attention.notes || "-"}</td>
+
+                    {canDelete && (
+                      <td className="p-3 text-right">
+                        <button
+                          type="button"
+                          onClick={() => deleteAttention(attention.id)}
+                          className="rounded-lg px-3 py-1 text-xs font-semibold text-red-700 hover:bg-red-50"
+                        >
+                          Eliminar
+                        </button>
+                      </td>
+                    )}
                   </tr>
                 ))}
               </tbody>
