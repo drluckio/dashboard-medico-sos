@@ -106,6 +106,69 @@ function getTodayForFileName() {
   return new Date().toISOString().slice(0, 10);
 }
 
+function getMonthKey(dateString) {
+  if (!dateString) return "";
+  return dateString.slice(0, 7);
+}
+
+function getCurrentMonthKey() {
+  return new Date().toISOString().slice(0, 7);
+}
+
+function getMonthLabel(monthKey) {
+  if (!monthKey) return "Sin mes";
+
+  const [year, month] = monthKey.split("-");
+  const date = new Date(Number(year), Number(month) - 1, 1);
+
+  return date.toLocaleDateString("es-MX", {
+    month: "long",
+    year: "numeric",
+  });
+}
+
+function buildCountList(items, getValue, limit = 5) {
+  const counts = {};
+
+  items.forEach((item) => {
+    const rawValue = getValue(item);
+    const value =
+      rawValue === null || rawValue === undefined || String(rawValue).trim() === ""
+        ? "Sin especificar"
+        : String(rawValue).trim();
+
+    counts[value] = (counts[value] || 0) + 1;
+  });
+
+  return Object.entries(counts)
+    .map(([label, count]) => ({ label, count }))
+    .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label))
+    .slice(0, limit);
+}
+
+function downloadCsv(filename, headers, rows) {
+  const csvContent =
+    "\uFEFF" +
+    [headers, ...rows]
+      .map((row) => row.map((cell) => escapeCsv(cell)).join(","))
+      .join("\n");
+
+  const blob = new Blob([csvContent], {
+    type: "text/csv;charset=utf-8;",
+  });
+
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+
+  URL.revokeObjectURL(url);
+}
+
 export default function App() {
   const [session, setSession] = useState(null);
   const [checkingSession, setCheckingSession] = useState(true);
@@ -123,6 +186,8 @@ export default function App() {
   const [medicines, setMedicines] = useState([]);
   const [attentions, setAttentions] = useState([]);
   const [form, setForm] = useState(createInitialForm());
+
+  const [reportMonth, setReportMonth] = useState(getCurrentMonthKey());
 
   const [filters, setFilters] = useState({
     startDate: "",
@@ -178,6 +243,19 @@ export default function App() {
       .filter(Boolean);
 
     return ["Todas", ...Array.from(new Set(areas)).sort()];
+  }, [attentions]);
+
+  const monthOptions = useMemo(() => {
+    const months = attentions
+      .map((item) => getMonthKey(item.attention_date))
+      .filter(Boolean);
+
+    const uniqueMonths = Array.from(new Set([getCurrentMonthKey(), ...months]))
+      .filter(Boolean)
+      .sort()
+      .reverse();
+
+    return uniqueMonths;
   }, [attentions]);
 
   const filteredAttentions = useMemo(() => {
@@ -241,6 +319,12 @@ export default function App() {
     });
   }, [attentions, filters]);
 
+  const monthlyAttentions = useMemo(() => {
+    return attentions.filter(
+      (attention) => getMonthKey(attention.attention_date) === reportMonth
+    );
+  }, [attentions, reportMonth]);
+
   const kpis = useMemo(() => {
     const total = filteredAttentions.length;
 
@@ -275,6 +359,96 @@ export default function App() {
       vitalAlertsCount,
     };
   }, [filteredAttentions, medicines]);
+
+  const monthlyReport = useMemo(() => {
+    const total = monthlyAttentions.length;
+
+    const totalMinutes = monthlyAttentions.reduce(
+      (sum, item) => sum + Number(item.attention_minutes || 0),
+      0
+    );
+
+    const averageMinutes = total ? totalMinutes / total : 0;
+
+    const riskDistribution = riskLevels.map((risk) => ({
+      label: risk,
+      count: monthlyAttentions.filter((item) => item.risk_level === risk).length,
+    }));
+
+    const highRisk = monthlyAttentions.filter((item) =>
+      ["Alto", "Crítico"].includes(item.risk_level)
+    ).length;
+
+    const vitalAlertsCount = monthlyAttentions.filter((attention) => {
+      return (
+        evaluateVitalAlerts({
+          heart_rate: attention.heart_rate,
+          respiratory_rate: attention.respiratory_rate,
+          systolic_bp: attention.systolic_bp,
+          diastolic_bp: attention.diastolic_bp,
+          temperature: attention.temperature,
+        }).length > 0
+      );
+    }).length;
+
+    const medicineUsage = {};
+
+    monthlyAttentions.forEach((attention) => {
+      if (!attention.medicine_id) return;
+
+      const medicine = medicines.find((item) => item.id === attention.medicine_id);
+      const medicineName = medicine?.name || "Medicamento no identificado";
+      const quantity = Number(attention.medicine_quantity || 0);
+
+      medicineUsage[medicineName] = (medicineUsage[medicineName] || 0) + quantity;
+    });
+
+    const topMedicines = Object.entries(medicineUsage)
+      .map(([label, count]) => ({ label, count }))
+      .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label))
+      .slice(0, 5);
+
+    const topDiagnoses = buildCountList(
+      monthlyAttentions,
+      (item) => item.diagnosis,
+      5
+    );
+
+    const topAreas = buildCountList(monthlyAttentions, (item) => item.area, 5);
+
+    const alertsBreakdown = {};
+
+    monthlyAttentions.forEach((attention) => {
+      const alerts = evaluateVitalAlerts({
+        heart_rate: attention.heart_rate,
+        respiratory_rate: attention.respiratory_rate,
+        systolic_bp: attention.systolic_bp,
+        diastolic_bp: attention.diastolic_bp,
+        temperature: attention.temperature,
+      });
+
+      alerts.forEach((alert) => {
+        alertsBreakdown[alert] = (alertsBreakdown[alert] || 0) + 1;
+      });
+    });
+
+    const topVitalAlerts = Object.entries(alertsBreakdown)
+      .map(([label, count]) => ({ label, count }))
+      .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label))
+      .slice(0, 5);
+
+    return {
+      total,
+      averageMinutes,
+      highRisk,
+      vitalAlertsCount,
+      riskDistribution,
+      topMedicines,
+      topDiagnoses,
+      topAreas,
+      topVitalAlerts,
+    };
+  }, [monthlyAttentions, medicines]);
 
   async function loadUserRole() {
     if (!session?.user?.id) return;
@@ -486,26 +660,124 @@ export default function App() {
       ];
     });
 
-    const csvContent =
-      "\uFEFF" +
-      [headers, ...rows]
-        .map((row) => row.map((cell) => escapeCsv(cell)).join(","))
-        .join("\n");
+    downloadCsv(
+      `reporte-atenciones-sos-${getTodayForFileName()}.csv`,
+      headers,
+      rows
+    );
+  }
 
-    const blob = new Blob([csvContent], {
-      type: "text/csv;charset=utf-8;",
+  function exportMonthlyReportToCsv() {
+    if (monthlyAttentions.length === 0) {
+      alert("No hay registros en el mes seleccionado para exportar.");
+      return;
+    }
+
+    const summaryHeaders = ["Indicador", "Valor"];
+
+    const summaryRows = [
+      ["Mes", getMonthLabel(reportMonth)],
+      ["Total de atenciones", monthlyReport.total],
+      ["Tiempo promedio de atencion min", monthlyReport.averageMinutes.toFixed(1)],
+      ["Atenciones riesgo alto/critico", monthlyReport.highRisk],
+      ["Atenciones con alertas vitales", monthlyReport.vitalAlertsCount],
+    ];
+
+    const riskRows = monthlyReport.riskDistribution.map((item) => [
+      `Riesgo ${item.label}`,
+      item.count,
+    ]);
+
+    const diagnosisRows = monthlyReport.topDiagnoses.map((item) => [
+      `Diagnostico: ${item.label}`,
+      item.count,
+    ]);
+
+    const areaRows = monthlyReport.topAreas.map((item) => [
+      `Area: ${item.label}`,
+      item.count,
+    ]);
+
+    const medicineRows = monthlyReport.topMedicines.map((item) => [
+      `Medicamento: ${item.label}`,
+      item.count,
+    ]);
+
+    const alertRows = monthlyReport.topVitalAlerts.map((item) => [
+      `Alerta vital: ${item.label}`,
+      item.count,
+    ]);
+
+    const detailHeaders = [
+      "Fecha",
+      "Paciente",
+      "Numero de empleado",
+      "Area",
+      "Diagnostico/Motivo",
+      "Riesgo",
+      "Tiempo min",
+      "FC",
+      "FR",
+      "TA",
+      "Temperatura",
+      "Alertas",
+      "Notas",
+    ];
+
+    const detailRows = monthlyAttentions.map((attention) => {
+      const vitalAlerts = evaluateVitalAlerts({
+        heart_rate: attention.heart_rate,
+        respiratory_rate: attention.respiratory_rate,
+        systolic_bp: attention.systolic_bp,
+        diastolic_bp: attention.diastolic_bp,
+        temperature: attention.temperature,
+      });
+
+      return [
+        attention.attention_date,
+        attention.patient_name,
+        attention.employee_number,
+        attention.area || "",
+        attention.diagnosis || "",
+        attention.risk_level || "",
+        attention.attention_minutes || "",
+        attention.heart_rate || "",
+        attention.respiratory_rate || "",
+        attention.systolic_bp && attention.diastolic_bp
+          ? `${attention.systolic_bp}/${attention.diastolic_bp}`
+          : "",
+        attention.temperature || "",
+        vitalAlerts.join(" | "),
+        attention.notes || "",
+      ];
     });
 
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
+    const rows = [
+      ...summaryRows,
+      [""],
+      ...riskRows,
+      [""],
+      ...diagnosisRows,
+      [""],
+      ...areaRows,
+      [""],
+      ...medicineRows,
+      [""],
+      ...alertRows,
+      [""],
+      detailHeaders,
+      ...detailRows,
+    ];
 
-    link.href = url;
-    link.download = `reporte-atenciones-sos-${getTodayForFileName()}.csv`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    downloadCsv(
+      `reporte-mensual-sos-${reportMonth}.csv`,
+      summaryHeaders,
+      rows
+    );
+  }
 
-    URL.revokeObjectURL(url);
+  function printMonthlyReport() {
+    window.print();
   }
 
   async function saveAttention(event) {
@@ -829,6 +1101,174 @@ export default function App() {
             Cargando información desde Supabase...
           </div>
         )}
+
+        <section
+          id="reporte-mensual"
+          className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm"
+        >
+          <div className="mb-5 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.25em] text-red-700">
+                Vista ejecutiva
+              </p>
+              <h2 className="mt-1 text-2xl font-bold text-zinc-950">
+                Reporte mensual ejecutivo
+              </h2>
+              <p className="mt-1 text-sm text-zinc-500">
+                {getMonthLabel(reportMonth)} · {monthlyReport.total} atenciones registradas
+              </p>
+            </div>
+
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <select
+                className="rounded-xl border border-zinc-300 px-3 py-2 text-sm"
+                value={reportMonth}
+                onChange={(event) => setReportMonth(event.target.value)}
+              >
+                {monthOptions.map((month) => (
+                  <option key={month} value={month}>
+                    {getMonthLabel(month)}
+                  </option>
+                ))}
+              </select>
+
+              <button
+                type="button"
+                onClick={exportMonthlyReportToCsv}
+                className="rounded-xl bg-zinc-950 px-4 py-2 text-sm font-semibold text-white hover:bg-zinc-800"
+              >
+                Exportar reporte CSV
+              </button>
+
+              <button
+                type="button"
+                onClick={printMonthlyReport}
+                className="rounded-xl border border-zinc-300 px-4 py-2 text-sm font-semibold text-zinc-700 hover:bg-zinc-50"
+              >
+                Imprimir / PDF
+              </button>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
+            <div className="rounded-2xl bg-zinc-50 p-4">
+              <p className="text-sm text-zinc-500">Total de atenciones</p>
+              <p className="mt-2 text-3xl font-bold">{monthlyReport.total}</p>
+            </div>
+
+            <div className="rounded-2xl bg-zinc-50 p-4">
+              <p className="text-sm text-zinc-500">Tiempo promedio</p>
+              <p className="mt-2 text-3xl font-bold">
+                {monthlyReport.averageMinutes.toFixed(1)} min
+              </p>
+            </div>
+
+            <div className="rounded-2xl bg-zinc-50 p-4">
+              <p className="text-sm text-zinc-500">Riesgo alto/crítico</p>
+              <p className="mt-2 text-3xl font-bold">{monthlyReport.highRisk}</p>
+            </div>
+
+            <div className="rounded-2xl bg-red-50 p-4">
+              <p className="text-sm text-red-700">Alertas vitales</p>
+              <p className="mt-2 text-3xl font-bold text-red-800">
+                {monthlyReport.vitalAlertsCount}
+              </p>
+            </div>
+          </div>
+
+          <div className="mt-6 grid grid-cols-1 gap-5 lg:grid-cols-2">
+            <div className="rounded-2xl border border-zinc-200 p-4">
+              <h3 className="mb-3 font-semibold">Distribución por riesgo</h3>
+              <div className="space-y-2">
+                {monthlyReport.riskDistribution.map((item) => (
+                  <div
+                    key={item.label}
+                    className="flex items-center justify-between rounded-xl bg-zinc-50 px-3 py-2 text-sm"
+                  >
+                    <span>{item.label}</span>
+                    <strong>{item.count}</strong>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-zinc-200 p-4">
+              <h3 className="mb-3 font-semibold">Principales diagnósticos / motivos</h3>
+              <div className="space-y-2">
+                {monthlyReport.topDiagnoses.length > 0 ? (
+                  monthlyReport.topDiagnoses.map((item) => (
+                    <div
+                      key={item.label}
+                      className="flex items-center justify-between rounded-xl bg-zinc-50 px-3 py-2 text-sm"
+                    >
+                      <span>{item.label}</span>
+                      <strong>{item.count}</strong>
+                    </div>
+                  ))
+                ) : (
+                  <p className="text-sm text-zinc-500">Sin registros.</p>
+                )}
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-zinc-200 p-4">
+              <h3 className="mb-3 font-semibold">Áreas con mayor demanda</h3>
+              <div className="space-y-2">
+                {monthlyReport.topAreas.length > 0 ? (
+                  monthlyReport.topAreas.map((item) => (
+                    <div
+                      key={item.label}
+                      className="flex items-center justify-between rounded-xl bg-zinc-50 px-3 py-2 text-sm"
+                    >
+                      <span>{item.label}</span>
+                      <strong>{item.count}</strong>
+                    </div>
+                  ))
+                ) : (
+                  <p className="text-sm text-zinc-500">Sin registros.</p>
+                )}
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-zinc-200 p-4">
+              <h3 className="mb-3 font-semibold">Medicamentos más utilizados</h3>
+              <div className="space-y-2">
+                {monthlyReport.topMedicines.length > 0 ? (
+                  monthlyReport.topMedicines.map((item) => (
+                    <div
+                      key={item.label}
+                      className="flex items-center justify-between rounded-xl bg-zinc-50 px-3 py-2 text-sm"
+                    >
+                      <span>{item.label}</span>
+                      <strong>{item.count}</strong>
+                    </div>
+                  ))
+                ) : (
+                  <p className="text-sm text-zinc-500">Sin consumo registrado.</p>
+                )}
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-zinc-200 p-4 lg:col-span-2">
+              <h3 className="mb-3 font-semibold">Alertas vitales detectadas</h3>
+              <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
+                {monthlyReport.topVitalAlerts.length > 0 ? (
+                  monthlyReport.topVitalAlerts.map((item) => (
+                    <div
+                      key={item.label}
+                      className="flex items-center justify-between rounded-xl bg-red-50 px-3 py-2 text-sm text-red-900"
+                    >
+                      <span>{item.label}</span>
+                      <strong>{item.count}</strong>
+                    </div>
+                  ))
+                ) : (
+                  <p className="text-sm text-zinc-500">Sin alertas vitales en el periodo.</p>
+                )}
+              </div>
+            </div>
+          </div>
+        </section>
 
         <section className="rounded-2xl bg-white p-5 shadow-sm">
           <div className="mb-4 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
