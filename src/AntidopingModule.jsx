@@ -24,6 +24,9 @@ const testTypeOptions = [
 const sampleTypeOptions = ["Orina", "Saliva", "Aliento", "Otro"];
 
 const fieldLabels = {
+  folio: "Folio SOS",
+  folio_year: "Año de folio",
+  folio_sequence: "Consecutivo de folio",
   test_date: "Fecha de prueba",
   employee_name: "Colaborador",
   employee_number: "Número de empleado",
@@ -32,7 +35,7 @@ const fieldLabels = {
   test_type: "Tipo de prueba",
   sample_type: "Tipo de muestra",
   sample_code: "Código de muestra",
-  lot_number: "Lote / folio",
+  lot_number: "Lote de prueba / reactivo",
   result: "Resultado",
   collector_name: "Responsable de toma",
   observations: "Observaciones",
@@ -189,11 +192,15 @@ function formatChangedFields(fields) {
 function getAuditSubject(log) {
   const data = log.new_data || log.old_data || {};
 
+  const folioText = data.folio ? `${data.folio} · ` : "";
+
   if (data.employee_name) {
-    return `${data.employee_name} · ${data.employee_number || "sin número"}`;
+    return `${folioText}${data.employee_name} · ${
+      data.employee_number || "sin número"
+    }`;
   }
 
-  return "Registro sin identificación";
+  return `${folioText}Registro sin identificación`;
 }
 
 function KpiCard({ label, value, helper, tone = "neutral" }) {
@@ -328,6 +335,7 @@ export default function AntidopingModule({ session, userRole }) {
 
       if (filters.searchText.trim()) {
         const searchBase = [
+          test.folio,
           test.employee_name,
           test.employee_number,
           test.area,
@@ -623,6 +631,7 @@ export default function AntidopingModule({ session, userRole }) {
     }
 
     const headers = [
+      "Folio SOS",
       "Fecha",
       "Colaborador",
       "Numero de empleado",
@@ -631,7 +640,7 @@ export default function AntidopingModule({ session, userRole }) {
       "Tipo de prueba",
       "Tipo de muestra",
       "Codigo de muestra",
-      "Lote/Folio",
+      "Lote de prueba",
       "Resultado",
       "Responsable de toma",
       "Capturo",
@@ -641,6 +650,7 @@ export default function AntidopingModule({ session, userRole }) {
     ];
 
     const rows = filteredTests.map((test) => [
+      test.folio || "",
       test.test_date,
       test.employee_name,
       test.employee_number,
@@ -725,6 +735,7 @@ export default function AntidopingModule({ session, userRole }) {
     ]);
 
     const detailHeaders = [
+      "Folio SOS",
       "Fecha",
       "Colaborador",
       "Numero de empleado",
@@ -733,7 +744,7 @@ export default function AntidopingModule({ session, userRole }) {
       "Tipo de prueba",
       "Tipo de muestra",
       "Codigo de muestra",
-      "Lote/Folio",
+      "Lote de prueba",
       "Resultado",
       "Responsable de toma",
       "Capturo",
@@ -743,6 +754,7 @@ export default function AntidopingModule({ session, userRole }) {
     ];
 
     const detailRows = monthlyTests.map((test) => [
+      test.folio || "",
       test.test_date,
       test.employee_name,
       test.employee_number,
@@ -947,7 +959,7 @@ export default function AntidopingModule({ session, userRole }) {
 
             <input
               className="rounded-2xl border border-zinc-300 bg-white px-4 py-3 outline-none ring-red-700/20 focus:ring-4"
-              placeholder="Lote / folio de prueba"
+              placeholder="Lote de prueba / reactivo"
               value={values.lot_number}
               onChange={(event) => onChange("lot_number", event.target.value)}
             />
@@ -1172,9 +1184,10 @@ export default function AntidopingModule({ session, userRole }) {
         </div>
 
         <div className="mt-6 overflow-x-auto">
-          <table className="w-full min-w-[1600px] text-sm">
+          <table className="w-full min-w-[1750px] text-sm">
             <thead>
               <tr className="border-b bg-zinc-950 text-left text-xs uppercase tracking-wide text-white">
+                <th className="p-3">Folio SOS</th>
                 <th className="p-3">Fecha</th>
                 <th className="p-3">Colaborador</th>
                 <th className="p-3">Empleado</th>
@@ -1183,7 +1196,7 @@ export default function AntidopingModule({ session, userRole }) {
                 <th className="p-3">Prueba</th>
                 <th className="p-3">Muestra</th>
                 <th className="p-3">Código</th>
-                <th className="p-3">Lote/Folio</th>
+                <th className="p-3">Lote</th>
                 <th className="p-3">Resultado</th>
                 <th className="p-3">Responsable</th>
                 <th className="p-3">Capturó</th>
@@ -1201,6 +1214,12 @@ export default function AntidopingModule({ session, userRole }) {
                   key={test.id}
                   className="border-b align-top hover:bg-zinc-50"
                 >
+                  <td className="p-3">
+                    <span className="rounded-full bg-zinc-950 px-2 py-1 text-xs font-black text-white">
+                      {test.folio || "Sin folio"}
+                    </span>
+                  </td>
+
                   <td className="p-3">{test.test_date}</td>
                   <td className="p-3 font-bold">{test.employee_name}</td>
                   <td className="p-3">{test.employee_number}</td>
@@ -1314,7 +1333,7 @@ export default function AntidopingModule({ session, userRole }) {
         </div>
 
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[1000px] text-sm">
+          <table className="w-full min-w-[1100px] text-sm">
             <thead>
               <tr className="border-b bg-zinc-950 text-left text-xs uppercase tracking-wide text-white">
                 <th className="p-3">Fecha / hora</th>
