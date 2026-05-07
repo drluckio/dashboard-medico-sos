@@ -1,11 +1,13 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { supabase } from "./lib/supabaseClient";
+import AntidopingModule from "./AntidopingModule.jsx";
 
 const riskLevels = ["Bajo", "Medio", "Alto", "Crítico"];
 
 const navItems = [
   { id: "dashboard", label: "Dashboard", subtitle: "Centro de control" },
   { id: "atenciones", label: "Atenciones", subtitle: "Registro clínico" },
+  { id: "antidoping", label: "Antidoping", subtitle: "Pruebas toxicológicas" },
   { id: "inventario", label: "Inventario", subtitle: "Insumos médicos" },
   { id: "reportes", label: "Reportes", subtitle: "Vista ejecutiva" },
 ];
@@ -1207,10 +1209,12 @@ export default function App() {
                           {attention.patient_name}
                         </p>
                         <p className="text-xs text-red-800">
-                          {attention.attention_date} · {attention.area || "Sin área"}
+                          {attention.attention_date} ·{" "}
+                          {attention.area || "Sin área"}
                         </p>
                         <p className="mt-1 text-xs text-red-700">
-                          Capturó: {attention.created_by_email || "Sin registro"}
+                          Capturó:{" "}
+                          {attention.created_by_email || "Sin registro"}
                         </p>
                       </div>
                       <span className="rounded-full bg-red-700 px-2 py-1 text-xs font-bold text-white">
@@ -1623,9 +1627,7 @@ export default function App() {
                     className="border-b align-top hover:bg-zinc-50"
                   >
                     <td className="p-3">{attention.attention_date}</td>
-
                     <td className="p-3 font-bold">{attention.patient_name}</td>
-
                     <td className="p-3">{attention.employee_number}</td>
                     <td className="p-3">{attention.area || "-"}</td>
                     <td className="p-3">{attention.diagnosis || "-"}</td>
@@ -2251,6 +2253,9 @@ export default function App() {
 
           {activeModule === "dashboard" && renderDashboard()}
           {activeModule === "atenciones" && renderAtenciones()}
+          {activeModule === "antidoping" && (
+            <AntidopingModule session={session} userRole={userRole} />
+          )}
           {activeModule === "inventario" && renderInventory()}
           {activeModule === "reportes" && renderReports()}
         </main>
