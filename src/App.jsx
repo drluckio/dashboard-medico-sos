@@ -24,6 +24,82 @@ function createInitialForm() {
   };
 }
 
+function evaluateVitalAlerts(vitals) {
+  const alerts = [];
+
+  const heartRate = Number(vitals.heart_rate);
+  const respiratoryRate = Number(vitals.respiratory_rate);
+  const systolicBp = Number(vitals.systolic_bp);
+  const diastolicBp = Number(vitals.diastolic_bp);
+  const temperature = Number(vitals.temperature);
+
+  if (
+    vitals.heart_rate !== null &&
+    vitals.heart_rate !== "" &&
+    !Number.isNaN(heartRate)
+  ) {
+    if (heartRate < 60) alerts.push("FC baja");
+    if (heartRate > 100) alerts.push("FC elevada");
+  }
+
+  if (
+    vitals.respiratory_rate !== null &&
+    vitals.respiratory_rate !== "" &&
+    !Number.isNaN(respiratoryRate)
+  ) {
+    if (respiratoryRate < 8) alerts.push("FR baja");
+    if (respiratoryRate > 20) alerts.push("FR elevada");
+  }
+
+  if (
+    vitals.systolic_bp !== null &&
+    vitals.diastolic_bp !== null &&
+    !Number.isNaN(systolicBp) &&
+    !Number.isNaN(diastolicBp)
+  ) {
+    if (systolicBp > 159) alerts.push("TA sistólica elevada");
+    if (systolicBp < 100) alerts.push("TA sistólica baja");
+
+    if (diastolicBp > 90) alerts.push("TA diastólica elevada");
+    if (diastolicBp < 60) alerts.push("TA diastólica baja");
+  }
+
+  if (
+    vitals.temperature !== null &&
+    vitals.temperature !== "" &&
+    !Number.isNaN(temperature)
+  ) {
+    if (temperature >= 38) alerts.push("Fiebre");
+    if (temperature < 35) alerts.push("Temperatura baja");
+  }
+
+  return alerts;
+}
+
+function formatBloodPressureInput(value) {
+  const digits = value.replace(/\D/g, "").slice(0, 6);
+
+  if (digits.length <= 3) {
+    return digits;
+  }
+
+  if (digits.length === 4) {
+    const firstThree = Number(digits.slice(0, 3));
+
+    if (firstThree >= 100) {
+      return `${digits.slice(0, 3)}/${digits.slice(3)}`;
+    }
+
+    return `${digits.slice(0, 2)}/${digits.slice(2)}`;
+  }
+
+  if (digits.length === 5) {
+    return `${digits.slice(0, 3)}/${digits.slice(3)}`;
+  }
+
+  return `${digits.slice(0, 3)}/${digits.slice(3, 6)}`;
+}
+
 export default function App() {
   const [session, setSession] = useState(null);
   const [checkingSession, setCheckingSession] = useState(true);
@@ -93,11 +169,24 @@ export default function App() {
 
     const averageMinutes = total ? totalMinutes / total : 0;
 
+    const vitalAlertsCount = attentions.filter((attention) => {
+      return (
+        evaluateVitalAlerts({
+          heart_rate: attention.heart_rate,
+          respiratory_rate: attention.respiratory_rate,
+          systolic_bp: attention.systolic_bp,
+          diastolic_bp: attention.diastolic_bp,
+          temperature: attention.temperature,
+        }).length > 0
+      );
+    }).length;
+
     return {
       total,
       highRisk,
       averageMinutes,
       medicinesCount: medicines.length,
+      vitalAlertsCount,
     };
   }, [attentions, medicines]);
 
@@ -273,7 +362,30 @@ export default function App() {
         diastolicBp < 20 ||
         diastolicBp > 200
       ) {
-        alert("La tensión arterial debe tener un formato válido, ejemplo: 120/80.");
+        alert(
+          "La tensión arterial debe tener un formato válido, ejemplo: 120/80."
+        );
+        return;
+      }
+    }
+
+    const vitalAlerts = evaluateVitalAlerts({
+      heart_rate: form.heart_rate === "" ? null : Number(form.heart_rate),
+      respiratory_rate:
+        form.respiratory_rate === "" ? null : Number(form.respiratory_rate),
+      systolic_bp: systolicBp,
+      diastolic_bp: diastolicBp,
+      temperature: form.temperature === "" ? null : Number(form.temperature),
+    });
+
+    if (vitalAlerts.length > 0) {
+      const proceed = confirm(
+        "Se detectaron signos vitales fuera de rango:\n\n" +
+          vitalAlerts.map((alert) => `• ${alert}`).join("\n") +
+          "\n\n¿Deseas guardar la atención de todos modos?"
+      );
+
+      if (!proceed) {
         return;
       }
     }
@@ -536,7 +648,7 @@ export default function App() {
           </div>
         )}
 
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-5">
           <div className="rounded-2xl bg-white p-5 shadow-sm">
             <p className="text-sm text-zinc-500">Atenciones</p>
             <p className="mt-2 text-3xl font-bold">{kpis.total}</p>
@@ -556,6 +668,13 @@ export default function App() {
             <p className="text-sm text-zinc-500">Tiempo promedio</p>
             <p className="mt-2 text-3xl font-bold">
               {kpis.averageMinutes.toFixed(1)} min
+            </p>
+          </div>
+
+          <div className="rounded-2xl bg-white p-5 shadow-sm">
+            <p className="text-sm text-zinc-500">Alertas vitales</p>
+            <p className="mt-2 text-3xl font-bold text-red-700">
+              {kpis.vitalAlertsCount}
             </p>
           </div>
         </div>
@@ -717,14 +836,18 @@ export default function App() {
                     <input
                       className="w-full rounded-xl border border-zinc-300 px-3 py-2"
                       type="text"
+                      inputMode="numeric"
                       placeholder="Ej. 120/80"
                       value={form.blood_pressure}
                       onChange={(event) =>
-                        updateField("blood_pressure", event.target.value)
+                        updateField(
+                          "blood_pressure",
+                          formatBloodPressureInput(event.target.value)
+                        )
                       }
                     />
                     <span className="mt-1 block text-xs text-zinc-500">
-                      Formato: sistólica/diastólica mmHg
+                      Formato automático: sistólica/diastólica mmHg
                     </span>
                   </label>
 
@@ -821,7 +944,7 @@ export default function App() {
           </h2>
 
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[1100px] text-sm">
+            <table className="w-full min-w-[1200px] text-sm">
               <thead>
                 <tr className="border-b bg-zinc-50 text-left text-xs uppercase text-zinc-500">
                   <th className="p-3">Fecha</th>
@@ -832,73 +955,103 @@ export default function App() {
                   <th className="p-3">Riesgo</th>
                   <th className="p-3">Tiempo</th>
                   <th className="p-3">Signos vitales</th>
+                  <th className="p-3">Alerta</th>
                   <th className="p-3">Notas</th>
                   {canDelete && <th className="p-3 text-right">Acciones</th>}
                 </tr>
               </thead>
 
               <tbody>
-                {attentions.map((attention) => (
-                  <tr key={attention.id} className="border-b align-top">
-                    <td className="p-3">{attention.attention_date}</td>
+                {attentions.map((attention) => {
+                  const vitalAlerts = evaluateVitalAlerts({
+                    heart_rate: attention.heart_rate,
+                    respiratory_rate: attention.respiratory_rate,
+                    systolic_bp: attention.systolic_bp,
+                    diastolic_bp: attention.diastolic_bp,
+                    temperature: attention.temperature,
+                  });
 
-                    <td className="p-3 font-medium">
-                      {attention.patient_name}
-                    </td>
+                  return (
+                    <tr key={attention.id} className="border-b align-top">
+                      <td className="p-3">{attention.attention_date}</td>
 
-                    <td className="p-3">{attention.employee_number}</td>
-                    <td className="p-3">{attention.area || "-"}</td>
-                    <td className="p-3">{attention.diagnosis || "-"}</td>
-                    <td className="p-3">{attention.risk_level}</td>
-                    <td className="p-3">{attention.attention_minutes} min</td>
-
-                    <td className="p-3">
-                      <div className="space-y-1 text-xs text-zinc-700">
-                        <div>
-                          <span className="font-semibold">FC:</span>{" "}
-                          {attention.heart_rate
-                            ? `${attention.heart_rate} lpm`
-                            : "-"}
-                        </div>
-
-                        <div>
-                          <span className="font-semibold">FR:</span>{" "}
-                          {attention.respiratory_rate
-                            ? `${attention.respiratory_rate} rpm`
-                            : "-"}
-                        </div>
-
-                        <div>
-                          <span className="font-semibold">TA:</span>{" "}
-                          {attention.systolic_bp && attention.diastolic_bp
-                            ? `${attention.systolic_bp}/${attention.diastolic_bp} mmHg`
-                            : "-"}
-                        </div>
-
-                        <div>
-                          <span className="font-semibold">Temp:</span>{" "}
-                          {attention.temperature
-                            ? `${attention.temperature} °C`
-                            : "-"}
-                        </div>
-                      </div>
-                    </td>
-
-                    <td className="p-3">{attention.notes || "-"}</td>
-
-                    {canDelete && (
-                      <td className="p-3 text-right">
-                        <button
-                          type="button"
-                          onClick={() => deleteAttention(attention.id)}
-                          className="rounded-lg px-3 py-1 text-xs font-semibold text-red-700 hover:bg-red-50"
-                        >
-                          Eliminar
-                        </button>
+                      <td className="p-3 font-medium">
+                        {attention.patient_name}
                       </td>
-                    )}
-                  </tr>
-                ))}
+
+                      <td className="p-3">{attention.employee_number}</td>
+                      <td className="p-3">{attention.area || "-"}</td>
+                      <td className="p-3">{attention.diagnosis || "-"}</td>
+                      <td className="p-3">{attention.risk_level}</td>
+                      <td className="p-3">{attention.attention_minutes} min</td>
+
+                      <td className="p-3">
+                        <div className="space-y-1 text-xs text-zinc-700">
+                          <div>
+                            <span className="font-semibold">FC:</span>{" "}
+                            {attention.heart_rate
+                              ? `${attention.heart_rate} lpm`
+                              : "-"}
+                          </div>
+
+                          <div>
+                            <span className="font-semibold">FR:</span>{" "}
+                            {attention.respiratory_rate
+                              ? `${attention.respiratory_rate} rpm`
+                              : "-"}
+                          </div>
+
+                          <div>
+                            <span className="font-semibold">TA:</span>{" "}
+                            {attention.systolic_bp && attention.diastolic_bp
+                              ? `${attention.systolic_bp}/${attention.diastolic_bp} mmHg`
+                              : "-"}
+                          </div>
+
+                          <div>
+                            <span className="font-semibold">Temp:</span>{" "}
+                            {attention.temperature
+                              ? `${attention.temperature} °C`
+                              : "-"}
+                          </div>
+                        </div>
+                      </td>
+
+                      <td className="p-3">
+                        {vitalAlerts.length > 0 ? (
+                          <div className="space-y-1">
+                            {vitalAlerts.map((alert) => (
+                              <span
+                                key={alert}
+                                className="block rounded-full bg-red-100 px-2 py-1 text-xs font-semibold text-red-800"
+                              >
+                                {alert}
+                              </span>
+                            ))}
+                          </div>
+                        ) : (
+                          <span className="rounded-full bg-emerald-100 px-2 py-1 text-xs font-semibold text-emerald-800">
+                            Sin alerta
+                          </span>
+                        )}
+                      </td>
+
+                      <td className="p-3">{attention.notes || "-"}</td>
+
+                      {canDelete && (
+                        <td className="p-3 text-right">
+                          <button
+                            type="button"
+                            onClick={() => deleteAttention(attention.id)}
+                            className="rounded-lg px-3 py-1 text-xs font-semibold text-red-700 hover:bg-red-50"
+                          >
+                            Eliminar
+                          </button>
+                        </td>
+                      )}
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
