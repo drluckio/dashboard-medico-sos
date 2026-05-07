@@ -23,6 +23,22 @@ const testTypeOptions = [
 
 const sampleTypeOptions = ["Orina", "Saliva", "Aliento", "Otro"];
 
+const fieldLabels = {
+  test_date: "Fecha de prueba",
+  employee_name: "Colaborador",
+  employee_number: "Número de empleado",
+  area: "Área",
+  reason: "Motivo",
+  test_type: "Tipo de prueba",
+  sample_type: "Tipo de muestra",
+  sample_code: "Código de muestra",
+  lot_number: "Lote / folio",
+  result: "Resultado",
+  collector_name: "Responsable de toma",
+  observations: "Observaciones",
+  registro_eliminado: "Registro eliminado",
+};
+
 function createInitialForm() {
   return {
     test_date: new Date().toISOString().slice(0, 10),
@@ -37,6 +53,23 @@ function createInitialForm() {
     result: "Pendiente",
     collector_name: "",
     observations: "",
+  };
+}
+
+function createFormFromTest(test) {
+  return {
+    test_date: test.test_date || new Date().toISOString().slice(0, 10),
+    employee_name: test.employee_name || "",
+    employee_number: test.employee_number || "",
+    area: test.area || "",
+    reason: test.reason || "Nuevo ingreso",
+    test_type: test.test_type || "Antidoping 5 parámetros",
+    sample_type: test.sample_type || "Orina",
+    sample_code: test.sample_code || "",
+    lot_number: test.lot_number || "",
+    result: test.result || "Pendiente",
+    collector_name: test.collector_name || "",
+    observations: test.observations || "",
   };
 }
 
@@ -131,6 +164,38 @@ function getResultBadgeClass(result) {
   return "bg-emerald-100 text-emerald-800 ring-emerald-200";
 }
 
+function getAuditBadgeClass(action) {
+  if (action === "CREADO") return "bg-emerald-100 text-emerald-800";
+  if (action === "ACTUALIZADO") return "bg-blue-100 text-blue-800";
+  if (action === "ELIMINADO") return "bg-red-100 text-red-800";
+  return "bg-zinc-100 text-zinc-700";
+}
+
+function formatDateTime(value) {
+  if (!value) return "-";
+
+  return new Date(value).toLocaleString("es-MX", {
+    dateStyle: "medium",
+    timeStyle: "short",
+  });
+}
+
+function formatChangedFields(fields) {
+  if (!fields || fields.length === 0) return "Sin detalle";
+
+  return fields.map((field) => fieldLabels[field] || field).join(", ");
+}
+
+function getAuditSubject(log) {
+  const data = log.new_data || log.old_data || {};
+
+  if (data.employee_name) {
+    return `${data.employee_name} · ${data.employee_number || "sin número"}`;
+  }
+
+  return "Registro sin identificación";
+}
+
 function KpiCard({ label, value, helper, tone = "neutral" }) {
   const toneClass =
     tone === "red"
@@ -188,8 +253,14 @@ function ReportList({ title, items, danger = false }) {
 
 export default function AntidopingModule({ session, userRole }) {
   const [tests, setTests] = useState([]);
+  const [auditLogs, setAuditLogs] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [loadingLogs, setLoadingLogs] = useState(false);
+
   const [form, setForm] = useState(createInitialForm());
+  const [editingTestId, setEditingTestId] = useState(null);
+  const [editForm, setEditForm] = useState(createInitialForm());
+
   const [reportMonth, setReportMonth] = useState(getCurrentMonthKey());
 
   const [filters, setFilters] = useState({
@@ -202,10 +273,12 @@ export default function AntidopingModule({ session, userRole }) {
   });
 
   const canRegister = ["admin", "medico", "enfermeria"].includes(userRole);
+  const canEdit = ["admin", "medico"].includes(userRole);
   const canDelete = userRole === "admin";
 
   useEffect(() => {
     loadTests();
+    loadAuditLogs();
   }, []);
 
   const uniqueAreas = useMemo(() => {
@@ -267,6 +340,7 @@ export default function AntidopingModule({ session, userRole }) {
           test.collector_name,
           test.observations,
           test.created_by_email,
+          test.updated_by_email,
         ]
           .filter(Boolean)
           .join(" ")
@@ -333,8 +407,33 @@ export default function AntidopingModule({ session, userRole }) {
     setLoading(false);
   }
 
+  async function loadAuditLogs() {
+    setLoadingLogs(true);
+
+    const { data, error } = await supabase
+      .from("antidoping_test_audit_logs")
+      .select("*")
+      .order("created_at", { ascending: false })
+      .limit(80);
+
+    if (error) {
+      alert("Error cargando bitácora antidoping: " + error.message);
+    } else {
+      setAuditLogs(data || []);
+    }
+
+    setLoadingLogs(false);
+  }
+
   function updateField(field, value) {
     setForm((current) => ({
+      ...current,
+      [field]: value,
+    }));
+  }
+
+  function updateEditField(field, value) {
+    setEditForm((current) => ({
       ...current,
       [field]: value,
     }));
@@ -356,6 +455,21 @@ export default function AntidopingModule({ session, userRole }) {
       employeeNumber: "",
       searchText: "",
     });
+  }
+
+  function startEdit(test) {
+    setEditingTestId(test.id);
+    setEditForm(createFormFromTest(test));
+
+    window.scrollTo({
+      top: 0,
+      behavior: "smooth",
+    });
+  }
+
+  function cancelEdit() {
+    setEditingTestId(null);
+    setEditForm(createInitialForm());
   }
 
   async function saveTest(event) {
@@ -406,6 +520,71 @@ export default function AntidopingModule({ session, userRole }) {
 
     setTests((current) => [data, ...current]);
     setForm(createInitialForm());
+
+    await loadAuditLogs();
+  }
+
+  async function updateTest(event) {
+    event.preventDefault();
+
+    if (!canEdit) {
+      alert("Tu rol no permite modificar pruebas antidoping.");
+      return;
+    }
+
+    if (!editingTestId) {
+      alert("No hay una prueba seleccionada para editar.");
+      return;
+    }
+
+    if (!editForm.employee_name.trim()) {
+      alert("Captura el nombre del colaborador.");
+      return;
+    }
+
+    if (!editForm.employee_number.trim()) {
+      alert("Captura el número de empleado.");
+      return;
+    }
+
+    const payload = {
+      test_date: editForm.test_date,
+      employee_name: editForm.employee_name.trim(),
+      employee_number: editForm.employee_number.trim(),
+      area: editForm.area.trim() || null,
+      reason: editForm.reason,
+      test_type: editForm.test_type,
+      sample_type: editForm.sample_type,
+      sample_code: editForm.sample_code.trim() || null,
+      lot_number: editForm.lot_number.trim() || null,
+      result: editForm.result,
+      collector_name: editForm.collector_name.trim() || null,
+      observations: editForm.observations.trim() || null,
+      updated_at: new Date().toISOString(),
+      updated_by_user_id: session?.user?.id || null,
+      updated_by_email: session?.user?.email || "Sin correo",
+    };
+
+    const { data, error } = await supabase
+      .from("antidoping_tests")
+      .update(payload)
+      .eq("id", editingTestId)
+      .select()
+      .single();
+
+    if (error) {
+      alert("No se pudo actualizar la prueba antidoping: " + error.message);
+      return;
+    }
+
+    setTests((current) =>
+      current.map((item) => (item.id === editingTestId ? data : item))
+    );
+
+    cancelEdit();
+    await loadAuditLogs();
+
+    alert("Prueba antidoping actualizada. La modificación quedó en bitácora.");
   }
 
   async function deleteTest(id) {
@@ -414,7 +593,13 @@ export default function AntidopingModule({ session, userRole }) {
       return;
     }
 
-    if (!confirm("¿Eliminar esta prueba antidoping?")) return;
+    if (
+      !confirm(
+        "¿Eliminar esta prueba antidoping? Esta acción quedará registrada en bitácora."
+      )
+    ) {
+      return;
+    }
 
     const { error } = await supabase
       .from("antidoping_tests")
@@ -427,6 +612,8 @@ export default function AntidopingModule({ session, userRole }) {
     }
 
     setTests((current) => current.filter((item) => item.id !== id));
+
+    await loadAuditLogs();
   }
 
   function exportFilteredToCsv() {
@@ -448,6 +635,8 @@ export default function AntidopingModule({ session, userRole }) {
       "Resultado",
       "Responsable de toma",
       "Capturo",
+      "Ultima modificacion",
+      "Modificado por",
       "Observaciones",
     ];
 
@@ -464,6 +653,8 @@ export default function AntidopingModule({ session, userRole }) {
       test.result,
       test.collector_name || "",
       test.created_by_email || "",
+      test.updated_at || "",
+      test.updated_by_email || "",
       test.observations || "",
     ]);
 
@@ -546,6 +737,8 @@ export default function AntidopingModule({ session, userRole }) {
       "Resultado",
       "Responsable de toma",
       "Capturo",
+      "Ultima modificacion",
+      "Modificado por",
       "Observaciones",
     ];
 
@@ -562,6 +755,8 @@ export default function AntidopingModule({ session, userRole }) {
       test.result,
       test.collector_name || "",
       test.created_by_email || "",
+      test.updated_at || "",
+      test.updated_by_email || "",
       test.observations || "",
     ]);
 
@@ -591,8 +786,238 @@ export default function AntidopingModule({ session, userRole }) {
     );
   }
 
+  function exportAuditLogsToCsv() {
+    if (auditLogs.length === 0) {
+      alert("No hay movimientos de bitácora para exportar.");
+      return;
+    }
+
+    const headers = [
+      "Fecha y hora",
+      "Accion",
+      "Registro",
+      "Usuario",
+      "Campos modificados",
+    ];
+
+    const rows = auditLogs.map((log) => [
+      log.created_at,
+      log.action,
+      getAuditSubject(log),
+      log.changed_by_email || "",
+      formatChangedFields(log.changed_fields),
+    ]);
+
+    downloadCsv(
+      `bitacora-antidoping-sos-${getTodayForFileName()}.csv`,
+      headers,
+      rows
+    );
+  }
+
   function printReport() {
     window.print();
+  }
+
+  function renderTestForm({
+    mode,
+    values,
+    onChange,
+    onSubmit,
+    onCancel,
+    disabled,
+  }) {
+    const isEdit = mode === "edit";
+
+    return (
+      <section
+        className={`rounded-3xl border p-6 shadow-sm ${
+          isEdit
+            ? "border-blue-200 bg-blue-50"
+            : "border-zinc-200 bg-white"
+        }`}
+      >
+        <div className="mb-5 flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
+          <div>
+            <p
+              className={`text-xs font-semibold uppercase tracking-[0.25em] ${
+                isEdit ? "text-blue-700" : "text-red-700"
+              }`}
+            >
+              {isEdit ? "Edición / cierre" : "Control toxicológico"}
+            </p>
+
+            <h2 className="mt-1 text-2xl font-black tracking-tight">
+              {isEdit
+                ? "Editar prueba antidoping"
+                : "Registro de prueba antidoping"}
+            </h2>
+
+            <p className="mt-1 text-sm text-zinc-500">
+              {isEdit
+                ? "Cada cambio quedará registrado automáticamente en la bitácora."
+                : "Registro independiente para pruebas, resultado y trazabilidad."}
+            </p>
+          </div>
+
+          <span className="w-fit rounded-full bg-zinc-950 px-3 py-1 text-xs font-bold text-white">
+            Rol: {userRole || "cargando"}
+          </span>
+        </div>
+
+        {!disabled ? (
+          <form
+            onSubmit={onSubmit}
+            className="grid grid-cols-1 gap-4 md:grid-cols-3"
+          >
+            <input
+              className="rounded-2xl border border-zinc-300 bg-white px-4 py-3 outline-none ring-red-700/20 focus:ring-4"
+              type="date"
+              value={values.test_date}
+              onChange={(event) => onChange("test_date", event.target.value)}
+            />
+
+            <input
+              className="rounded-2xl border border-zinc-300 bg-white px-4 py-3 outline-none ring-red-700/20 focus:ring-4"
+              placeholder="Nombre del colaborador"
+              value={values.employee_name}
+              onChange={(event) =>
+                onChange("employee_name", event.target.value)
+              }
+            />
+
+            <input
+              className="rounded-2xl border border-zinc-300 bg-white px-4 py-3 outline-none ring-red-700/20 focus:ring-4"
+              placeholder="Número de empleado"
+              value={values.employee_number}
+              onChange={(event) =>
+                onChange("employee_number", event.target.value)
+              }
+            />
+
+            <input
+              className="rounded-2xl border border-zinc-300 bg-white px-4 py-3 outline-none ring-red-700/20 focus:ring-4"
+              placeholder="Área"
+              value={values.area}
+              onChange={(event) => onChange("area", event.target.value)}
+            />
+
+            <select
+              className="rounded-2xl border border-zinc-300 bg-white px-4 py-3 outline-none ring-red-700/20 focus:ring-4"
+              value={values.reason}
+              onChange={(event) => onChange("reason", event.target.value)}
+            >
+              {reasonOptions.map((reason) => (
+                <option key={reason} value={reason}>
+                  {reason}
+                </option>
+              ))}
+            </select>
+
+            <select
+              className="rounded-2xl border border-zinc-300 bg-white px-4 py-3 outline-none ring-red-700/20 focus:ring-4"
+              value={values.test_type}
+              onChange={(event) => onChange("test_type", event.target.value)}
+            >
+              {testTypeOptions.map((testType) => (
+                <option key={testType} value={testType}>
+                  {testType}
+                </option>
+              ))}
+            </select>
+
+            <select
+              className="rounded-2xl border border-zinc-300 bg-white px-4 py-3 outline-none ring-red-700/20 focus:ring-4"
+              value={values.sample_type}
+              onChange={(event) => onChange("sample_type", event.target.value)}
+            >
+              {sampleTypeOptions.map((sampleType) => (
+                <option key={sampleType} value={sampleType}>
+                  {sampleType}
+                </option>
+              ))}
+            </select>
+
+            <input
+              className="rounded-2xl border border-zinc-300 bg-white px-4 py-3 outline-none ring-red-700/20 focus:ring-4"
+              placeholder="Código de muestra"
+              value={values.sample_code}
+              onChange={(event) => onChange("sample_code", event.target.value)}
+            />
+
+            <input
+              className="rounded-2xl border border-zinc-300 bg-white px-4 py-3 outline-none ring-red-700/20 focus:ring-4"
+              placeholder="Lote / folio de prueba"
+              value={values.lot_number}
+              onChange={(event) => onChange("lot_number", event.target.value)}
+            />
+
+            <select
+              className="rounded-2xl border border-zinc-300 bg-white px-4 py-3 outline-none ring-red-700/20 focus:ring-4"
+              value={values.result}
+              onChange={(event) => onChange("result", event.target.value)}
+            >
+              {resultOptions.map((result) => (
+                <option key={result} value={result}>
+                  {result}
+                </option>
+              ))}
+            </select>
+
+            <input
+              className="rounded-2xl border border-zinc-300 bg-white px-4 py-3 outline-none ring-red-700/20 focus:ring-4 md:col-span-2"
+              placeholder="Responsable de toma"
+              value={values.collector_name}
+              onChange={(event) =>
+                onChange("collector_name", event.target.value)
+              }
+            />
+
+            <textarea
+              className="min-h-28 rounded-2xl border border-zinc-300 bg-white px-4 py-3 outline-none ring-red-700/20 focus:ring-4 md:col-span-3"
+              placeholder="Observaciones / cadena de custodia / incidencias"
+              value={values.observations}
+              onChange={(event) => onChange("observations", event.target.value)}
+            />
+
+            <div className="rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-600 md:col-span-3">
+              {isEdit ? "Modificación por: " : "Captura por: "}
+              <strong>{session?.user?.email || "usuario actual"}</strong>
+            </div>
+
+            <div className="flex flex-col gap-2 md:col-span-3 md:flex-row">
+              <button
+                className={`rounded-2xl px-5 py-4 font-black text-white shadow-sm ${
+                  isEdit
+                    ? "bg-blue-700 hover:bg-blue-800"
+                    : "bg-red-700 hover:bg-red-800"
+                }`}
+              >
+                {isEdit ? "Guardar modificación" : "Guardar prueba antidoping"}
+              </button>
+
+              {isEdit && (
+                <button
+                  type="button"
+                  onClick={onCancel}
+                  className="rounded-2xl border border-zinc-300 bg-white px-5 py-4 font-black text-zinc-700 hover:bg-zinc-50"
+                >
+                  Cancelar edición
+                </button>
+              )}
+            </div>
+          </form>
+        ) : (
+          <EmptyState
+            text={
+              isEdit
+                ? "Tu rol actual no permite modificar pruebas antidoping."
+                : "Tu rol actual no permite registrar pruebas antidoping."
+            }
+          />
+        )}
+      </section>
+    );
   }
 
   return (
@@ -600,6 +1025,12 @@ export default function AntidopingModule({ session, userRole }) {
       {loading && (
         <div className="rounded-2xl bg-amber-100 px-4 py-3 text-sm font-bold text-amber-900">
           Cargando pruebas antidoping...
+        </div>
+      )}
+
+      {loadingLogs && (
+        <div className="rounded-2xl bg-blue-100 px-4 py-3 text-sm font-bold text-blue-900">
+          Cargando bitácora de modificaciones...
         </div>
       )}
 
@@ -630,161 +1061,25 @@ export default function AntidopingModule({ session, userRole }) {
         />
       </section>
 
-      <section className="rounded-3xl border border-zinc-200 bg-white p-6 shadow-sm">
-        <div className="mb-5 flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.25em] text-red-700">
-              Control toxicológico
-            </p>
-            <h2 className="mt-1 text-2xl font-black tracking-tight">
-              Registro de prueba antidoping
-            </h2>
-            <p className="mt-1 text-sm text-zinc-500">
-              Registro independiente para pruebas, resultado y trazabilidad.
-            </p>
-          </div>
+      {editingTestId &&
+        renderTestForm({
+          mode: "edit",
+          values: editForm,
+          onChange: updateEditField,
+          onSubmit: updateTest,
+          onCancel: cancelEdit,
+          disabled: !canEdit,
+        })}
 
-          <span className="w-fit rounded-full bg-zinc-950 px-3 py-1 text-xs font-bold text-white">
-            Rol: {userRole || "cargando"}
-          </span>
-        </div>
-
-        {canRegister ? (
-          <form
-            onSubmit={saveTest}
-            className="grid grid-cols-1 gap-4 md:grid-cols-3"
-          >
-            <input
-              className="rounded-2xl border border-zinc-300 bg-white px-4 py-3 outline-none ring-red-700/20 focus:ring-4"
-              type="date"
-              value={form.test_date}
-              onChange={(event) => updateField("test_date", event.target.value)}
-            />
-
-            <input
-              className="rounded-2xl border border-zinc-300 bg-white px-4 py-3 outline-none ring-red-700/20 focus:ring-4"
-              placeholder="Nombre del colaborador"
-              value={form.employee_name}
-              onChange={(event) =>
-                updateField("employee_name", event.target.value)
-              }
-            />
-
-            <input
-              className="rounded-2xl border border-zinc-300 bg-white px-4 py-3 outline-none ring-red-700/20 focus:ring-4"
-              placeholder="Número de empleado"
-              value={form.employee_number}
-              onChange={(event) =>
-                updateField("employee_number", event.target.value)
-              }
-            />
-
-            <input
-              className="rounded-2xl border border-zinc-300 bg-white px-4 py-3 outline-none ring-red-700/20 focus:ring-4"
-              placeholder="Área"
-              value={form.area}
-              onChange={(event) => updateField("area", event.target.value)}
-            />
-
-            <select
-              className="rounded-2xl border border-zinc-300 bg-white px-4 py-3 outline-none ring-red-700/20 focus:ring-4"
-              value={form.reason}
-              onChange={(event) => updateField("reason", event.target.value)}
-            >
-              {reasonOptions.map((reason) => (
-                <option key={reason} value={reason}>
-                  {reason}
-                </option>
-              ))}
-            </select>
-
-            <select
-              className="rounded-2xl border border-zinc-300 bg-white px-4 py-3 outline-none ring-red-700/20 focus:ring-4"
-              value={form.test_type}
-              onChange={(event) => updateField("test_type", event.target.value)}
-            >
-              {testTypeOptions.map((testType) => (
-                <option key={testType} value={testType}>
-                  {testType}
-                </option>
-              ))}
-            </select>
-
-            <select
-              className="rounded-2xl border border-zinc-300 bg-white px-4 py-3 outline-none ring-red-700/20 focus:ring-4"
-              value={form.sample_type}
-              onChange={(event) =>
-                updateField("sample_type", event.target.value)
-              }
-            >
-              {sampleTypeOptions.map((sampleType) => (
-                <option key={sampleType} value={sampleType}>
-                  {sampleType}
-                </option>
-              ))}
-            </select>
-
-            <input
-              className="rounded-2xl border border-zinc-300 bg-white px-4 py-3 outline-none ring-red-700/20 focus:ring-4"
-              placeholder="Código de muestra"
-              value={form.sample_code}
-              onChange={(event) =>
-                updateField("sample_code", event.target.value)
-              }
-            />
-
-            <input
-              className="rounded-2xl border border-zinc-300 bg-white px-4 py-3 outline-none ring-red-700/20 focus:ring-4"
-              placeholder="Lote / folio de prueba"
-              value={form.lot_number}
-              onChange={(event) =>
-                updateField("lot_number", event.target.value)
-              }
-            />
-
-            <select
-              className="rounded-2xl border border-zinc-300 bg-white px-4 py-3 outline-none ring-red-700/20 focus:ring-4"
-              value={form.result}
-              onChange={(event) => updateField("result", event.target.value)}
-            >
-              {resultOptions.map((result) => (
-                <option key={result} value={result}>
-                  {result}
-                </option>
-              ))}
-            </select>
-
-            <input
-              className="rounded-2xl border border-zinc-300 bg-white px-4 py-3 outline-none ring-red-700/20 focus:ring-4 md:col-span-2"
-              placeholder="Responsable de toma"
-              value={form.collector_name}
-              onChange={(event) =>
-                updateField("collector_name", event.target.value)
-              }
-            />
-
-            <textarea
-              className="min-h-28 rounded-2xl border border-zinc-300 bg-white px-4 py-3 outline-none ring-red-700/20 focus:ring-4 md:col-span-3"
-              placeholder="Observaciones / cadena de custodia / incidencias"
-              value={form.observations}
-              onChange={(event) =>
-                updateField("observations", event.target.value)
-              }
-            />
-
-            <div className="rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-600 md:col-span-3">
-              Esta prueba se guardará como capturada por:{" "}
-              <strong>{session?.user?.email || "usuario actual"}</strong>
-            </div>
-
-            <button className="rounded-2xl bg-red-700 px-5 py-4 font-black text-white shadow-sm hover:bg-red-800 md:col-span-3">
-              Guardar prueba antidoping
-            </button>
-          </form>
-        ) : (
-          <EmptyState text="Tu rol actual no permite registrar pruebas antidoping." />
-        )}
-      </section>
+      {!editingTestId &&
+        renderTestForm({
+          mode: "new",
+          values: form,
+          onChange: updateField,
+          onSubmit: saveTest,
+          onCancel: null,
+          disabled: !canRegister,
+        })}
 
       <section className="rounded-3xl border border-zinc-200 bg-white p-6 shadow-sm">
         <div className="mb-5 flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
@@ -877,7 +1172,7 @@ export default function AntidopingModule({ session, userRole }) {
         </div>
 
         <div className="mt-6 overflow-x-auto">
-          <table className="w-full min-w-[1400px] text-sm">
+          <table className="w-full min-w-[1600px] text-sm">
             <thead>
               <tr className="border-b bg-zinc-950 text-left text-xs uppercase tracking-wide text-white">
                 <th className="p-3">Fecha</th>
@@ -892,8 +1187,11 @@ export default function AntidopingModule({ session, userRole }) {
                 <th className="p-3">Resultado</th>
                 <th className="p-3">Responsable</th>
                 <th className="p-3">Capturó</th>
+                <th className="p-3">Modificación</th>
                 <th className="p-3">Observaciones</th>
-                {canDelete && <th className="p-3 text-right">Acciones</th>}
+                {(canEdit || canDelete) && (
+                  <th className="p-3 text-right">Acciones</th>
+                )}
               </tr>
             </thead>
 
@@ -931,17 +1229,42 @@ export default function AntidopingModule({ session, userRole }) {
                     </span>
                   </td>
 
+                  <td className="p-3 text-xs text-zinc-600">
+                    {test.updated_at ? (
+                      <div>
+                        <div>{formatDateTime(test.updated_at)}</div>
+                        <strong>{test.updated_by_email || "Sin usuario"}</strong>
+                      </div>
+                    ) : (
+                      "-"
+                    )}
+                  </td>
+
                   <td className="p-3">{test.observations || "-"}</td>
 
-                  {canDelete && (
+                  {(canEdit || canDelete) && (
                     <td className="p-3 text-right">
-                      <button
-                        type="button"
-                        onClick={() => deleteTest(test.id)}
-                        className="rounded-xl px-3 py-2 text-xs font-bold text-red-700 hover:bg-red-50"
-                      >
-                        Eliminar
-                      </button>
+                      <div className="flex justify-end gap-2">
+                        {canEdit && (
+                          <button
+                            type="button"
+                            onClick={() => startEdit(test)}
+                            className="rounded-xl px-3 py-2 text-xs font-bold text-blue-700 hover:bg-blue-50"
+                          >
+                            Editar / cerrar
+                          </button>
+                        )}
+
+                        {canDelete && (
+                          <button
+                            type="button"
+                            onClick={() => deleteTest(test.id)}
+                            className="rounded-xl px-3 py-2 text-xs font-bold text-red-700 hover:bg-red-50"
+                          >
+                            Eliminar
+                          </button>
+                        )}
+                      </div>
                     </td>
                   )}
                 </tr>
@@ -952,6 +1275,88 @@ export default function AntidopingModule({ session, userRole }) {
           {filteredTests.length === 0 && (
             <div className="mt-4">
               <EmptyState text="No hay pruebas antidoping con los filtros actuales." />
+            </div>
+          )}
+        </div>
+      </section>
+
+      <section className="rounded-3xl border border-zinc-200 bg-white p-6 shadow-sm">
+        <div className="mb-6 flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.25em] text-blue-700">
+              Bitácora de modificaciones
+            </p>
+            <h2 className="mt-1 text-2xl font-black tracking-tight">
+              Log de cambios antidoping
+            </h2>
+            <p className="mt-1 text-sm text-zinc-500">
+              Registra creación, edición, cierre de resultado y eliminación.
+            </p>
+          </div>
+
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <button
+              type="button"
+              onClick={loadAuditLogs}
+              className="rounded-2xl border border-zinc-300 px-4 py-3 text-sm font-bold text-zinc-700 hover:bg-zinc-50"
+            >
+              Actualizar bitácora
+            </button>
+
+            <button
+              type="button"
+              onClick={exportAuditLogsToCsv}
+              className="rounded-2xl bg-zinc-950 px-4 py-3 text-sm font-bold text-white hover:bg-zinc-800"
+            >
+              Exportar bitácora
+            </button>
+          </div>
+        </div>
+
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[1000px] text-sm">
+            <thead>
+              <tr className="border-b bg-zinc-950 text-left text-xs uppercase tracking-wide text-white">
+                <th className="p-3">Fecha / hora</th>
+                <th className="p-3">Acción</th>
+                <th className="p-3">Registro</th>
+                <th className="p-3">Usuario</th>
+                <th className="p-3">Campos modificados</th>
+              </tr>
+            </thead>
+
+            <tbody>
+              {auditLogs.map((log) => (
+                <tr key={log.id} className="border-b align-top hover:bg-zinc-50">
+                  <td className="p-3">{formatDateTime(log.created_at)}</td>
+
+                  <td className="p-3">
+                    <span
+                      className={`rounded-full px-2 py-1 text-xs font-bold ${getAuditBadgeClass(
+                        log.action
+                      )}`}
+                    >
+                      {log.action}
+                    </span>
+                  </td>
+
+                  <td className="p-3 font-bold">{getAuditSubject(log)}</td>
+
+                  <td className="p-3">
+                    {log.changed_by_email || "Sin usuario"}
+                  </td>
+
+                  <td className="p-3">
+                    {formatChangedFields(log.changed_fields)}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+
+          {auditLogs.length === 0 && (
+            <div className="mt-4">
+              <EmptyState text="Aún no hay movimientos registrados en bitácora." />
             </div>
           )}
         </div>
