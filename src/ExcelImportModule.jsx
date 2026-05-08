@@ -13,6 +13,11 @@ const importTargets = [
     label: "Atenciones médicas",
     helper: "Registros clínicos in-plant",
   },
+  {
+    id: "antidoping",
+    label: "Antidoping",
+    helper: "Pruebas toxicológicas, ingreso, aleatorio y resultados",
+  },
 ];
 
 const fieldAliases = {
@@ -90,6 +95,8 @@ const fieldAliases = {
     "fecha atención",
     "fecha de atencion",
     "fecha de atención",
+    "fecha prueba",
+    "fecha de prueba",
     "dia",
     "día",
     "fecha consulta",
@@ -285,6 +292,105 @@ const fieldAliases = {
     "tipo unidad",
     "medida",
   ],
+
+  antidoping_consecutive: [
+    "no",
+    "no.",
+    "numero",
+    "número",
+    "consecutivo",
+    "registro",
+  ],
+
+  antidoping_reason: [
+    "motivo",
+    "razon",
+    "razón",
+    "tipo",
+    "tipo prueba",
+    "tipo de prueba",
+    "causa",
+  ],
+
+  antidoping_ingreso: [
+    "ingreso",
+    "nuevo ingreso",
+    "preingreso",
+    "pre ingreso",
+  ],
+
+  antidoping_aleatorio: [
+    "aleatorio",
+    "random",
+    "sorteo",
+  ],
+
+  antidoping_result: [
+    "resultado",
+    "resultados",
+    "resultado antidoping",
+    "resultado doping",
+    "dictamen",
+  ],
+
+  antidoping_pregnancy: [
+    "prueba inmunologica embarazo",
+    "prueba inmunológica embarazo",
+    "embarazo",
+    "prueba embarazo",
+    "prueba de embarazo",
+    "inmunologica embarazo",
+    "inmunológica embarazo",
+  ],
+
+  antidoping_test_type: [
+    "tipo de prueba",
+    "panel",
+    "panel antidoping",
+    "antidoping",
+    "prueba",
+    "tipo antidoping",
+  ],
+
+  antidoping_sample_type: [
+    "muestra",
+    "tipo muestra",
+    "tipo de muestra",
+  ],
+
+  antidoping_sample_code: [
+    "codigo muestra",
+    "código muestra",
+    "codigo de muestra",
+    "código de muestra",
+    "muestra codigo",
+    "muestra código",
+    "folio muestra",
+    "folio",
+    "cadena custodia",
+    "cadena de custodia",
+  ],
+
+  antidoping_lot_number: [
+    "lote",
+    "lote prueba",
+    "lote de prueba",
+    "lote reactivo",
+    "lote de reactivo",
+    "reactivo",
+  ],
+
+  antidoping_collector: [
+    "responsable",
+    "responsable toma",
+    "responsable de toma",
+    "toma",
+    "realizo",
+    "realizó",
+    "aplico",
+    "aplicó",
+    "colector",
+  ],
 };
 
 function normalizeText(value) {
@@ -369,34 +475,161 @@ function toIntegerOrZero(value) {
     : 0;
 }
 
+function excelSerialToDate(serial) {
+  const numericSerial = Number(serial);
+
+  if (!Number.isFinite(numericSerial)) return null;
+
+  if (numericSerial < 20000 || numericSerial > 80000) return null;
+
+  const milliseconds = Math.round((numericSerial - 25569) * 86400 * 1000);
+  const date = new Date(milliseconds);
+
+  if (Number.isNaN(date.getTime())) return null;
+
+  const isoDate = date.toISOString().slice(0, 10);
+
+  return isValidIsoDate(isoDate) ? isoDate : null;
+}
+
+function normalizeYear(value) {
+  const raw = String(value || "")
+    .trim()
+    .replace(/[^\d]/g, "");
+
+  if (!raw) return "";
+
+  // Corrige años deformados por Excel o captura:
+  // 02025 -> 2025
+  // 20205 -> 2025
+  // 002025 -> 2025
+  // 02026 -> 2026
+  if (raw.length > 4) {
+    const knownYears = [
+      "2026",
+      "2025",
+      "2024",
+      "2023",
+      "2022",
+      "2021",
+      "2020",
+    ];
+
+    const foundYear = knownYears.find((year) => raw.includes(year));
+
+    if (foundYear) return foundYear;
+
+    const lastFour = raw.slice(-4);
+    const lastFourNumber = Number(lastFour);
+
+    if (lastFourNumber >= 2000 && lastFourNumber <= 2100) {
+      return lastFour;
+    }
+  }
+
+  if (raw.length === 4) return raw;
+
+  if (raw.length === 2) return `20${raw}`;
+
+  return raw;
+}
+
+function isValidIsoDate(value) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+
+  const [year, month, day] = value.split("-").map(Number);
+
+  if (year < 2000 || year > 2100) return false;
+  if (month < 1 || month > 12) return false;
+  if (day < 1 || day > 31) return false;
+
+  const date = new Date(Date.UTC(year, month - 1, day));
+
+  return (
+    date.getUTCFullYear() === year &&
+    date.getUTCMonth() + 1 === month &&
+    date.getUTCDate() === day
+  );
+}
+
 function parseDate(value) {
-  if (!value) return new Date().toISOString().slice(0, 10);
+  const today = new Date().toISOString().slice(0, 10);
+
+  if (value === null || value === undefined || value === "") {
+    return today;
+  }
+
+  if (typeof value === "number") {
+    const excelDate = excelSerialToDate(value);
+
+    if (excelDate && isValidIsoDate(excelDate)) {
+      return excelDate;
+    }
+
+    return today;
+  }
 
   if (value instanceof Date && !Number.isNaN(value.getTime())) {
-    return value.toISOString().slice(0, 10);
+    const isoDate = value.toISOString().slice(0, 10);
+
+    if (isValidIsoDate(isoDate)) {
+      return isoDate;
+    }
+
+    return today;
   }
 
   const text = String(value).trim();
 
-  if (/^\d{4}-\d{2}-\d{2}$/.test(text)) return text;
-
-  if (/^\d{2}\/\d{2}\/\d{4}$/.test(text)) {
-    const [day, month, year] = text.split("/");
-    return `${year}-${month}-${day}`;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(text) && isValidIsoDate(text)) {
+    return text;
   }
 
-  if (/^\d{2}-\d{2}-\d{4}$/.test(text)) {
-    const [day, month, year] = text.split("-");
-    return `${year}-${month}-${day}`;
+  // dd/mm/yyyy, dd/mm/02025, dd/mm/20205
+  if (/^\d{1,2}\/\d{1,2}\/\d{2,6}$/.test(text)) {
+    const [rawDay, rawMonth, rawYear] = text.split("/");
+
+    const day = rawDay.padStart(2, "0");
+    const month = rawMonth.padStart(2, "0");
+    const year = normalizeYear(rawYear);
+
+    const isoDate = `${year}-${month}-${day}`;
+
+    if (isValidIsoDate(isoDate)) {
+      return isoDate;
+    }
+
+    return today;
+  }
+
+  // dd-mm-yyyy, dd-mm-02025, dd-mm-20205
+  if (/^\d{1,2}-\d{1,2}-\d{2,6}$/.test(text)) {
+    const [rawDay, rawMonth, rawYear] = text.split("-");
+
+    const day = rawDay.padStart(2, "0");
+    const month = rawMonth.padStart(2, "0");
+    const year = normalizeYear(rawYear);
+
+    const isoDate = `${year}-${month}-${day}`;
+
+    if (isValidIsoDate(isoDate)) {
+      return isoDate;
+    }
+
+    return today;
   }
 
   const fallback = new Date(text);
 
   if (!Number.isNaN(fallback.getTime())) {
-    return fallback.toISOString().slice(0, 10);
+    const isoDate = fallback.toISOString().slice(0, 10);
+
+    if (isValidIsoDate(isoDate)) {
+      return isoDate;
+    }
   }
 
-  return new Date().toISOString().slice(0, 10);
+  return today;
 }
 
 function parseRisk(value) {
@@ -536,6 +769,97 @@ function classifyCondition(value) {
   return "Otros";
 }
 
+function isYes(value) {
+  const text = normalizeText(value);
+
+  return (
+    text === "si" ||
+    text === "sí" ||
+    text === "x" ||
+    text === "ok" ||
+    text === "yes" ||
+    text === "1" ||
+    text === "true"
+  );
+}
+
+function normalizeAntidopingResult(value) {
+  const text = normalizeText(value);
+
+  if (!text) return "Pendiente";
+
+  if (
+    text.includes("pendiente") ||
+    text === "pte" ||
+    text.includes("pdt") ||
+    text.includes("por confirmar")
+  ) {
+    return "Pendiente";
+  }
+
+  if (
+    text.includes("cadena de custodia incorrecta") ||
+    text.includes("custodia incorrecta") ||
+    text.includes("invalido") ||
+    text.includes("inválido") ||
+    text.includes("muestra invalida") ||
+    text.includes("muestra inválida")
+  ) {
+    return "Inválido";
+  }
+
+  if (
+    text.includes("no negativo") ||
+    text.includes("positivo") ||
+    text.includes("(+)") ||
+    text.includes("+") ||
+    text.includes("thc") ||
+    text.includes("coc") ||
+    text.includes("met") ||
+    text.includes("amp") ||
+    text.includes("bzd") ||
+    text.includes("opi") ||
+    text.includes("bar") ||
+    text.includes("pcp") ||
+    text.includes("mdma")
+  ) {
+    return "No negativo";
+  }
+
+  if (
+    text.includes("negativo") ||
+    text.includes("nevativo") ||
+    text.includes("negatiivo") ||
+    text.includes("negative")
+  ) {
+    return "Negativo";
+  }
+
+  return "Pendiente";
+}
+
+function getAntidopingReason(row) {
+  const manualReason = String(getField(row, "antidoping_reason")).trim();
+
+  if (manualReason) return manualReason;
+
+  const ingreso = getField(row, "antidoping_ingreso");
+  const aleatorio = getField(row, "antidoping_aleatorio");
+
+  if (isYes(ingreso)) return "Ingreso / aspirante";
+  if (isYes(aleatorio)) return "Aleatorio";
+
+  return "No especificado";
+}
+
+function formatDopingIdentifier(originalConsecutive, fallbackIndex) {
+  const raw = String(originalConsecutive || "").trim();
+  const digits = raw.replace(/\D/g, "");
+  const base = digits || String(fallbackIndex + 1);
+
+  return `DOPING-${base.padStart(4, "0")}`;
+}
+
 function getCompanyIdByName(companies, value) {
   const text = normalizeText(value);
 
@@ -600,10 +924,15 @@ function getPlantsForCompany(plants, companyId) {
   return plants.filter((plant) => plant.company_id === companyId);
 }
 
-function detectTarget(headers) {
+function scoreHeaders(headers, words) {
   const normalizedHeaders = headers.map(normalizeHeader).join(" ");
 
-  const inventoryScore = [
+  return words.filter((word) => normalizedHeaders.includes(normalizeHeader(word)))
+    .length;
+}
+
+function detectTarget(headers) {
+  const inventoryScore = scoreHeaders(headers, [
     "medicamento",
     "insumo",
     "stock",
@@ -613,9 +942,9 @@ function detectTarget(headers) {
     "unidad",
     "producto",
     "inventario",
-  ].filter((word) => normalizedHeaders.includes(word)).length;
+  ]);
 
-  const attentionScore = [
+  const attentionScore = scoreHeaders(headers, [
     "colaborador",
     "paciente",
     "empleado",
@@ -632,7 +961,24 @@ function detectTarget(headers) {
     "consulta",
     "motivo",
     "clasificacion",
-  ].filter((word) => normalizedHeaders.includes(word)).length;
+  ]);
+
+  const antidopingScore = scoreHeaders(headers, [
+    "resultado",
+    "ingreso",
+    "aleatorio",
+    "prueba inmunologica embarazo",
+    "prueba inmunológica embarazo",
+    "antidoping",
+    "doping",
+    "no.",
+    "nombre",
+    "fecha",
+  ]);
+
+  if (antidopingScore >= inventoryScore && antidopingScore >= attentionScore) {
+    return "antidoping";
+  }
 
   if (attentionScore > inventoryScore) return "atenciones";
 
@@ -702,7 +1048,14 @@ export default function ExcelImportModule({
     userRole
   );
 
+  const canImportAntidoping = ["admin", "medico", "enfermeria"].includes(
+    userRole
+  );
+
   const isAdmin = userRole === "admin";
+
+  const usesOperationalDefaults =
+    target === "atenciones" || target === "antidoping";
 
   const availableDefaultPlants = useMemo(() => {
     if (!defaultCompanyId) return [];
@@ -786,9 +1139,38 @@ export default function ExcelImportModule({
     };
   }, [isAdmin, userProfile, companies, plants]);
 
+  function resolveCompanyAndPlant(row) {
+    let companyId = "";
+    let plantId = "";
+
+    const companyName = getField(row, "company");
+    const plantName = getField(row, "plant");
+
+    if (operationalContext.scope === "global") {
+      companyId = getCompanyIdByName(companies, companyName) || defaultCompanyId;
+      plantId = getPlantIdByName(plants, companyId, plantName) || defaultPlantId;
+    }
+
+    if (operationalContext.scope === "company") {
+      companyId = operationalContext.company_id || defaultCompanyId;
+      plantId = getPlantIdByName(plants, companyId, plantName) || defaultPlantId;
+    }
+
+    if (operationalContext.scope === "plant") {
+      companyId = operationalContext.company_id;
+      plantId = operationalContext.plant_id;
+    }
+
+    return {
+      companyId,
+      plantId,
+    };
+  }
+
   const interpretedRows = useMemo(() => {
     if (target === "inventario") {
       return rawRows.map((row, index) => {
+        const excelRowNumber = row.__excelRowNumber || index + 2;
         const name = String(getField(row, "inventory_name")).trim();
 
         const stock = toIntegerOrZero(getField(row, "inventory_stock"));
@@ -804,7 +1186,7 @@ export default function ExcelImportModule({
         if (!name) errors.push("Falta medicamento/insumo");
 
         return {
-          rowNumber: index + 2,
+          rowNumber: excelRowNumber,
           valid: errors.length === 0,
           errors,
           payload: {
@@ -817,34 +1199,123 @@ export default function ExcelImportModule({
       });
     }
 
+    if (target === "antidoping") {
+      return rawRows.map((row, index) => {
+        const excelRowNumber = row.__excelRowNumber || index + 2;
+        const { companyId, plantId } = resolveCompanyAndPlant(row);
+
+        const employeeName = String(getField(row, "patient_name")).trim();
+
+        const rawEmployeeNumber = String(getField(row, "employee_number")).trim();
+
+        const originalConsecutive = String(
+          getField(row, "antidoping_consecutive")
+        ).trim();
+
+        const dopingIdentifier = formatDopingIdentifier(
+          originalConsecutive,
+          index
+        );
+
+        const employeeNumber = rawEmployeeNumber || dopingIdentifier;
+
+        const originalResult = String(getField(row, "antidoping_result")).trim();
+
+        const pregnancyResult = String(
+          getField(row, "antidoping_pregnancy")
+        ).trim();
+
+        const ingresoValue = String(getField(row, "antidoping_ingreso")).trim();
+        const aleatorioValue = String(getField(row, "antidoping_aleatorio")).trim();
+
+        const reason = getAntidopingReason(row);
+
+        const normalizedResult = normalizeAntidopingResult(originalResult);
+
+        const sampleCode =
+          String(getField(row, "antidoping_sample_code")).trim() ||
+          dopingIdentifier;
+
+        const baseNotes = String(getField(row, "notes")).trim();
+
+        const parsedDate = parseDate(getField(row, "date"));
+
+        const notes = [
+          baseNotes,
+          `Identificador operativo: ${dopingIdentifier}`,
+          originalConsecutive ? `Consecutivo original: ${originalConsecutive}` : "",
+          originalResult ? `Resultado original: ${originalResult}` : "",
+          pregnancyResult
+            ? `Prueba inmunológica embarazo: ${pregnancyResult}`
+            : "",
+          ingresoValue ? `Columna ingreso: ${ingresoValue}` : "",
+          aleatorioValue ? `Columna aleatorio: ${aleatorioValue}` : "",
+          rawEmployeeNumber
+            ? ""
+            : "Sin número de empleado en Excel; se generó identificador operativo DOPING.",
+        ]
+          .filter(Boolean)
+          .join(" | ");
+
+        const errors = [];
+
+        if (operationalContext.scope === "none") {
+          errors.push("Usuario sin empresa/planta asignada");
+        }
+
+        if (!companyId) errors.push("Empresa no encontrada/asignada");
+        if (!plantId) errors.push("Planta no encontrada/asignada");
+        if (!employeeName) errors.push("Falta nombre del colaborador/aspirante");
+        if (!isValidIsoDate(parsedDate)) errors.push("Fecha inválida");
+
+        return {
+          rowNumber: excelRowNumber,
+          valid: errors.length === 0,
+          errors,
+          display: {
+            companyName: getCompanyName(companies, companyId),
+            plantName: getPlantName(plants, plantId),
+            generatedEmployeeNumber: !rawEmployeeNumber,
+            originalResult,
+            pregnancyResult,
+          },
+          payload: {
+            company_id: companyId || null,
+            plant_id: plantId || null,
+            test_date: parsedDate,
+            employee_name: employeeName,
+            employee_number: employeeNumber,
+            area: String(getField(row, "area")).trim() || null,
+            reason,
+            test_type:
+              String(getField(row, "antidoping_test_type")).trim() ||
+              "Antidoping laboral",
+            sample_type:
+              String(getField(row, "antidoping_sample_type")).trim() || "Orina",
+            sample_code: sampleCode,
+            lot_number:
+              String(getField(row, "antidoping_lot_number")).trim() || null,
+            result: normalizedResult,
+            collector_name:
+              String(getField(row, "antidoping_collector")).trim() || null,
+            observations: notes || null,
+            created_by_user_id: session?.user?.id || null,
+            created_by_email: session?.user?.email || "Sin correo",
+          },
+        };
+      });
+    }
+
     return rawRows.map((row, index) => {
-      let companyId = "";
-      let plantId = "";
-
-      const companyName = getField(row, "company");
-      const plantName = getField(row, "plant");
-
-      if (operationalContext.scope === "global") {
-        companyId = getCompanyIdByName(companies, companyName) || defaultCompanyId;
-        plantId = getPlantIdByName(plants, companyId, plantName) || defaultPlantId;
-      }
-
-      if (operationalContext.scope === "company") {
-        companyId = operationalContext.company_id || defaultCompanyId;
-        plantId = getPlantIdByName(plants, companyId, plantName) || defaultPlantId;
-      }
-
-      if (operationalContext.scope === "plant") {
-        companyId = operationalContext.company_id;
-        plantId = operationalContext.plant_id;
-      }
+      const excelRowNumber = row.__excelRowNumber || index + 2;
+      const { companyId, plantId } = resolveCompanyAndPlant(row);
 
       const patientName = String(getField(row, "patient_name")).trim();
 
       const rawEmployeeNumber = String(getField(row, "employee_number")).trim();
 
       const employeeNumber =
-        rawEmployeeNumber || `SIN-NUMERO-FILA-${index + 2}`;
+        rawEmployeeNumber || `SIN-NUMERO-FILA-${excelRowNumber}`;
 
       const diagnosis = String(getField(row, "diagnosis")).trim();
       const manualClassification = String(
@@ -863,6 +1334,8 @@ export default function ExcelImportModule({
         ? ""
         : "Número de empleado no incluido en Excel; se generó identificador temporal.";
 
+      const parsedDate = parseDate(getField(row, "date"));
+
       const errors = [];
 
       if (operationalContext.scope === "none") {
@@ -872,13 +1345,14 @@ export default function ExcelImportModule({
       if (!companyId) errors.push("Empresa no encontrada/asignada");
       if (!plantId) errors.push("Planta no encontrada/asignada");
       if (!patientName) errors.push("Falta colaborador/paciente/nombre");
+      if (!isValidIsoDate(parsedDate)) errors.push("Fecha inválida");
 
       if (!rawEmployeeNumber && !allowMissingEmployeeNumber) {
         errors.push("Falta número de empleado");
       }
 
       return {
-        rowNumber: index + 2,
+        rowNumber: excelRowNumber,
         valid: errors.length === 0,
         errors,
         display: {
@@ -891,7 +1365,7 @@ export default function ExcelImportModule({
           plant_id: plantId || null,
           patient_name: patientName,
           employee_number: employeeNumber,
-          attention_date: parseDate(getField(row, "date")),
+          attention_date: parsedDate,
           area: String(getField(row, "area")).trim() || null,
           diagnosis: diagnosis || null,
           condition_classification: conditionClassification,
@@ -961,6 +1435,77 @@ export default function ExcelImportModule({
     }
   }
 
+  function getHeaderScore(headers) {
+    if (headers.length === 0) return 0;
+
+    const allHeaderText = headers.map(normalizeHeader).join(" ");
+
+    const importantWords = [
+      "nombre",
+      "fecha",
+      "resultado",
+      "ingreso",
+      "aleatorio",
+      "paciente",
+      "colaborador",
+      "empleado",
+      "diagnostico",
+      "descripcion",
+      "medicamento",
+      "stock",
+      "cantidad",
+      "area",
+      "categoria",
+      "empresa",
+      "planta",
+    ];
+
+    return importantWords.filter((word) =>
+      allHeaderText.includes(normalizeHeader(word))
+    ).length;
+  }
+
+  function detectHeaderRow(worksheet) {
+    const maxRowsToInspect = Math.min(12, worksheet.rowCount);
+    let bestHeaderRow = 1;
+    let bestHeaders = [];
+    let bestScore = 0;
+
+    for (let rowNumber = 1; rowNumber <= maxRowsToInspect; rowNumber += 1) {
+      const excelRow = worksheet.getRow(rowNumber);
+      const currentHeaders = [];
+
+      excelRow.eachCell({ includeEmpty: true }, (cell, colNumber) => {
+        const header = String(getCellValue(cell.value) || "").trim();
+
+        if (header) {
+          currentHeaders.push({
+            header,
+            colNumber,
+          });
+        }
+      });
+
+      const currentScore = getHeaderScore(
+        currentHeaders.map((item) => item.header)
+      );
+
+      if (
+        currentScore > bestScore ||
+        (currentScore === bestScore && currentHeaders.length > bestHeaders.length)
+      ) {
+        bestHeaderRow = rowNumber;
+        bestHeaders = currentHeaders;
+        bestScore = currentScore;
+      }
+    }
+
+    return {
+      headerRowNumber: bestHeaderRow,
+      detectedHeaders: bestHeaders,
+    };
+  }
+
   function loadSheet(selectedWorkbook, selectedSheetName) {
     const worksheet = selectedWorkbook.getWorksheet(selectedSheetName);
 
@@ -970,23 +1515,15 @@ export default function ExcelImportModule({
       return;
     }
 
-    const headerRow = worksheet.getRow(1);
-    const detectedHeaders = [];
-
-    headerRow.eachCell({ includeEmpty: true }, (cell, colNumber) => {
-      const header = String(getCellValue(cell.value) || "").trim();
-
-      if (header) {
-        detectedHeaders.push({
-          header,
-          colNumber,
-        });
-      }
-    });
+    const { headerRowNumber, detectedHeaders } = detectHeaderRow(worksheet);
 
     const nextRows = [];
 
-    for (let rowNumber = 2; rowNumber <= worksheet.rowCount; rowNumber += 1) {
+    for (
+      let rowNumber = headerRowNumber + 1;
+      rowNumber <= worksheet.rowCount;
+      rowNumber += 1
+    ) {
       const excelRow = worksheet.getRow(rowNumber);
       const rowObject = {};
       let hasAnyValue = false;
@@ -1002,6 +1539,7 @@ export default function ExcelImportModule({
       });
 
       if (hasAnyValue) {
+        rowObject.__excelRowNumber = rowNumber;
         nextRows.push(rowObject);
       }
     }
@@ -1057,6 +1595,26 @@ export default function ExcelImportModule({
     setResultMessage(`Atenciones importadas: ${rowsToImport.length} registro(s).`);
   }
 
+  async function importAntidoping() {
+    const rowsToImport = validRows.map((row) => row.payload);
+
+    if (rowsToImport.length === 0) {
+      alert("No hay filas válidas para importar.");
+      return;
+    }
+
+    const { error } = await supabase.from("antidoping_tests").insert(rowsToImport);
+
+    if (error) {
+      alert("No se pudieron importar antidoping: " + error.message);
+      return;
+    }
+
+    setResultMessage(
+      `Antidoping importado: ${rowsToImport.length} registro(s).`
+    );
+  }
+
   async function handleImport() {
     setImporting(true);
     setResultMessage("");
@@ -1079,6 +1637,16 @@ export default function ExcelImportModule({
       }
 
       await importAttentions();
+    }
+
+    if (target === "antidoping") {
+      if (!canImportAntidoping) {
+        alert("Tu rol no permite importar antidoping.");
+        setImporting(false);
+        return;
+      }
+
+      await importAntidoping();
     }
 
     await onReload?.();
@@ -1173,9 +1741,88 @@ export default function ExcelImportModule({
 
       if (includeCompanyColumns) {
         sampleRow.empresa =
-          getCompanyName(companies, defaultCompanyId) ||
-          companies[0]?.name ||
-          "Imperial Auto Fluid";
+          defaultCompanyId
+            ? getCompanyName(companies, defaultCompanyId)
+            : companies[0]?.name || "Imperial Auto Fluid";
+      }
+
+      if (includePlantColumn) {
+        const plant =
+          defaultPlantId
+            ? plants.find((item) => item.id === defaultPlantId)
+            : operationalContext.scope === "company"
+            ? getPlantsForCompany(plants, operationalContext.company_id)[0]
+            : plants[0];
+
+        sampleRow.planta = plant?.name || "Ramos Arizpe";
+      }
+
+      worksheet.addRow(sampleRow);
+    }
+
+    if (target === "antidoping") {
+      const worksheet = nextWorkbook.addWorksheet("Antidoping");
+
+      const includeCompanyColumns = operationalContext.scope === "global";
+      const includePlantColumn =
+        operationalContext.scope === "global" ||
+        operationalContext.scope === "company";
+
+      const columns = [];
+
+      if (includeCompanyColumns) {
+        columns.push({ header: "Empresa", key: "empresa", width: 28 });
+      }
+
+      if (includePlantColumn) {
+        columns.push({ header: "Planta", key: "planta", width: 24 });
+      }
+
+      columns.push(
+        { header: "NO.", key: "no", width: 10 },
+        { header: "NOMBRE", key: "nombre", width: 34 },
+        { header: "FECHA", key: "fecha", width: 16 },
+        { header: "INGRESO", key: "ingreso", width: 14 },
+        { header: "ALEATORIO", key: "aleatorio", width: 14 },
+        { header: "RESULTADO", key: "resultado", width: 26 },
+        {
+          header: "PRUEBA INMUNOLOGICA EMBARAZO",
+          key: "embarazo",
+          width: 34,
+        },
+        { header: "Número empleado", key: "numero_empleado", width: 20 },
+        { header: "Tipo de prueba", key: "tipo_prueba", width: 22 },
+        { header: "Tipo de muestra", key: "tipo_muestra", width: 18 },
+        { header: "Código de muestra", key: "codigo_muestra", width: 24 },
+        { header: "Lote de prueba", key: "lote", width: 20 },
+        { header: "Responsable de toma", key: "responsable", width: 26 },
+        { header: "Observaciones", key: "observaciones", width: 40 }
+      );
+
+      worksheet.columns = columns;
+
+      const sampleRow = {
+        no: 1,
+        nombre: "JUAN PRUEBA",
+        fecha: new Date().toISOString().slice(0, 10),
+        ingreso: "SI",
+        aleatorio: "",
+        resultado: "NEGATIVO",
+        embarazo: "",
+        numero_empleado: "",
+        tipo_prueba: "Antidoping laboral",
+        tipo_muestra: "Orina",
+        codigo_muestra: "",
+        lote: "",
+        responsable: "",
+        observaciones: "",
+      };
+
+      if (includeCompanyColumns) {
+        sampleRow.empresa =
+          defaultCompanyId
+            ? getCompanyName(companies, defaultCompanyId)
+            : companies[0]?.name || "Imperial Auto Fluid";
       }
 
       if (includePlantColumn) {
@@ -1214,6 +1861,8 @@ export default function ExcelImportModule({
     link.download =
       target === "inventario"
         ? "plantilla-inventario-sos.xlsx"
+        : target === "antidoping"
+        ? "plantilla-antidoping-sos.xlsx"
         : "plantilla-atenciones-sos.xlsx";
 
     document.body.appendChild(link);
@@ -1301,7 +1950,7 @@ export default function ExcelImportModule({
           </p>
         </div>
 
-        {target === "atenciones" && (
+        {usesOperationalDefaults && (
           <div className="mb-5 rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
             <p className="text-xs font-black uppercase tracking-[0.18em] text-zinc-500">
               Valores por defecto para importación
@@ -1369,8 +2018,8 @@ export default function ExcelImportModule({
             </div>
 
             <p className="mt-3 text-xs text-zinc-500">
-              Si el Excel no trae empresa/planta, se usarán estos valores. Si no
-              trae número de empleado, se generará un identificador temporal.
+              Para antidoping, el número de empleado no es obligatorio. Si falta,
+              se genera un identificador operativo tipo DOPING-0001.
             </p>
           </div>
         )}
@@ -1487,7 +2136,7 @@ export default function ExcelImportModule({
           <EmptyState text="Carga un archivo Excel para ver la interpretación." />
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[1350px] text-sm">
+            <table className="w-full min-w-[1450px] text-sm">
               <thead>
                 <tr className="border-b bg-zinc-950 text-left text-xs uppercase tracking-wide text-white">
                   <th className="p-3">Fila</th>
@@ -1499,6 +2148,18 @@ export default function ExcelImportModule({
                       <th className="p-3">Stock</th>
                       <th className="p-3">Mínimo</th>
                       <th className="p-3">Unidad</th>
+                    </>
+                  ) : target === "antidoping" ? (
+                    <>
+                      <th className="p-3">Empresa</th>
+                      <th className="p-3">Planta</th>
+                      <th className="p-3">Fecha</th>
+                      <th className="p-3">Colaborador / aspirante</th>
+                      <th className="p-3">Identificador</th>
+                      <th className="p-3">Motivo</th>
+                      <th className="p-3">Resultado</th>
+                      <th className="p-3">Resultado original</th>
+                      <th className="p-3">Embarazo</th>
                     </>
                   ) : (
                     <>
@@ -1546,6 +2207,29 @@ export default function ExcelImportModule({
                         <td className="p-3">{row.payload.stock}</td>
                         <td className="p-3">{row.payload.minimum_stock}</td>
                         <td className="p-3">{row.payload.unit}</td>
+                      </>
+                    ) : target === "antidoping" ? (
+                      <>
+                        <td className="p-3">{row.display.companyName}</td>
+                        <td className="p-3">{row.display.plantName}</td>
+                        <td className="p-3">{row.payload.test_date}</td>
+                        <td className="p-3 font-bold">
+                          {row.payload.employee_name}
+                        </td>
+                        <td className="p-3">
+                          {row.payload.employee_number}
+                          {row.display.generatedEmployeeNumber && (
+                            <span className="ml-2 rounded-full bg-amber-100 px-2 py-1 text-[10px] font-black text-amber-800">
+                              DOPING
+                            </span>
+                          )}
+                        </td>
+                        <td className="p-3">{row.payload.reason}</td>
+                        <td className="p-3">{row.payload.result}</td>
+                        <td className="p-3">{row.display.originalResult || "-"}</td>
+                        <td className="p-3">
+                          {row.display.pregnancyResult || "-"}
+                        </td>
                       </>
                     ) : (
                       <>
