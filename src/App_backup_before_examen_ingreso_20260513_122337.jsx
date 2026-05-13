@@ -7,11 +7,11 @@ import AdminAccessModule from "./AdminAccessModule.jsx";
 import ExcelImportModule from "./ExcelImportModule.jsx";
 import PreemploymentMedicalExamModule from "./PreemploymentMedicalExamModule.jsx";
 
-const riskOptions = ["Bajo", "Medio", "Alto", "CrÃ­tico"];
+const riskOptions = ["Bajo", "Medio", "Alto", "Crítico"];
 
 const navItems = [
   
-  { id: "ingreso", label: "Examen ingreso", subtitle: "Historia clÃ­nica ocupacional" },
+  { id: "ingreso", label: "Examen ingreso", subtitle: "Historia clínica ocupacional" },
 {
     id: "dashboard",
     label: "Dashboard",
@@ -40,11 +40,11 @@ const navItems = [
   {
     id: "antidoping",
     label: "Antidoping",
-    subtitle: "Pruebas toxicolÃ³gicas",
+    subtitle: "Pruebas toxicológicas",
   },
   {
     id: "cronicos",
-    label: "CrÃ³nico-degenerativos",
+    label: "Crónico-degenerativos",
     subtitle: "Programa preventivo",
   },
   {
@@ -127,14 +127,14 @@ function classifyCondition(value) {
     text.includes("rodilla") ||
     text.includes("tobillo") ||
     text.includes("muneca") ||
-    text.includes("muÃ±eca") ||
+    text.includes("muñeca") ||
     text.includes("dolor muscular") ||
     text.includes("contractura") ||
     text.includes("esguince") ||
     text.includes("torcedura") ||
     text.includes("muscular")
   ) {
-    return "MÃºsculo-esquelÃ©tico";
+    return "Músculo-esquelético";
   }
 
   if (
@@ -143,9 +143,9 @@ function classifyCondition(value) {
     text.includes("migra") ||
     text.includes("mareo") ||
     text.includes("vertigo") ||
-    text.includes("vÃ©rtigo")
+    text.includes("vértigo")
   ) {
-    return "NeurolÃ³gico / cefalea";
+    return "Neurológico / cefalea";
   }
 
   if (
@@ -156,7 +156,7 @@ function classifyCondition(value) {
     text.includes("garganta") ||
     text.includes("resfriado") ||
     text.includes("congestion") ||
-    text.includes("congestiÃ³n") ||
+    text.includes("congestión") ||
     text.includes("rinorrea") ||
     text.includes("respiratorio")
   ) {
@@ -166,13 +166,13 @@ function classifyCondition(value) {
   if (
     text.includes("diarrea") ||
     text.includes("vomito") ||
-    text.includes("vÃ³mito") ||
+    text.includes("vómito") ||
     text.includes("nausea") ||
-    text.includes("nÃ¡usea") ||
+    text.includes("náusea") ||
     text.includes("gastr") ||
     text.includes("abdominal") ||
     text.includes("estomago") ||
-    text.includes("estÃ³mago")
+    text.includes("estómago")
   ) {
     return "Gastrointestinal";
   }
@@ -182,35 +182,35 @@ function classifyCondition(value) {
     text.includes("herida") ||
     text.includes("golpe") ||
     text.includes("contusion") ||
-    text.includes("contusiÃ³n") ||
+    text.includes("contusión") ||
     text.includes("trauma") ||
     text.includes("quemadura") ||
     text.includes("lesion") ||
-    text.includes("lesiÃ³n")
+    text.includes("lesión")
   ) {
-    return "LesiÃ³n / trauma";
+    return "Lesión / trauma";
   }
 
   if (
     text.includes("hipertension") ||
-    text.includes("hipertensiÃ³n") ||
+    text.includes("hipertensión") ||
     text.includes("presion alta") ||
-    text.includes("presiÃ³n alta") ||
+    text.includes("presión alta") ||
     text.includes("diabetes") ||
     text.includes("glucosa") ||
     text.includes("hta") ||
     text.includes("dm2")
   ) {
-    return "CrÃ³nico-degenerativo";
+    return "Crónico-degenerativo";
   }
 
   if (
     text.includes("ansiedad") ||
     text.includes("estres") ||
-    text.includes("estrÃ©s") ||
+    text.includes("estrés") ||
     text.includes("crisis nerviosa") ||
     text.includes("panico") ||
-    text.includes("pÃ¡nico")
+    text.includes("pánico")
   ) {
     return "Psicosocial";
   }
@@ -220,9 +220,9 @@ function classifyCondition(value) {
     text.includes("ocular") ||
     text.includes("conjunt") ||
     text.includes("vision") ||
-    text.includes("visiÃ³n")
+    text.includes("visión")
   ) {
-    return "OftalmolÃ³gico";
+    return "Oftalmológico";
   }
 
   if (
@@ -231,9 +231,9 @@ function classifyCondition(value) {
     text.includes("roncha") ||
     text.includes("alerg") ||
     text.includes("comezon") ||
-    text.includes("comezÃ³n")
+    text.includes("comezón")
   ) {
-    return "DermatolÃ³gico / alÃ©rgico";
+    return "Dermatológico / alérgico";
   }
 
   return "Otros";
@@ -290,7 +290,7 @@ function downloadCsv(filename, headers, rows) {
 }
 
 function getRiskBadgeClass(risk) {
-  if (risk === "CrÃ­tico") return "bg-red-100 text-red-800 ring-red-200";
+  if (risk === "Crítico") return "bg-red-100 text-red-800 ring-red-200";
   if (risk === "Alto") return "bg-orange-100 text-orange-800 ring-orange-200";
   if (risk === "Medio") return "bg-amber-100 text-amber-800 ring-amber-200";
   return "bg-emerald-100 text-emerald-800 ring-emerald-200";
@@ -378,7 +378,7 @@ function LoginScreen() {
     event.preventDefault();
 
     if (!email.trim() || !password) {
-      alert("Captura correo y contraseÃ±a.");
+      alert("Captura correo y contraseña.");
       return;
     }
 
@@ -388,7 +388,7 @@ function LoginScreen() {
     });
 
     if (error) {
-      alert("No se pudo iniciar sesiÃ³n: " + error.message);
+      alert("No se pudo iniciar sesión: " + error.message);
     }
   }
 
@@ -405,11 +405,11 @@ function LoginScreen() {
     });
 
     if (error) {
-      alert("No se pudo enviar recuperaciÃ³n: " + error.message);
+      alert("No se pudo enviar recuperación: " + error.message);
       return;
     }
 
-    alert("Se enviÃ³ el correo de recuperaciÃ³n.");
+    alert("Se envió el correo de recuperación.");
     setMode("login");
   }
 
@@ -426,7 +426,7 @@ function LoginScreen() {
               SOS MedicalOps
             </p>
             <h1 className="text-2xl font-black tracking-tight">
-              Centro mÃ©dico-operativo
+              Centro médico-operativo
             </h1>
           </div>
         </div>
@@ -443,7 +443,7 @@ function LoginScreen() {
 
             <input
               className="w-full rounded-2xl border border-zinc-300 px-4 py-3 outline-none ring-red-700/20 focus:ring-4"
-              placeholder="ContraseÃ±a"
+              placeholder="Contraseña"
               type="password"
               value={password}
               onChange={(event) => setPassword(event.target.value)}
@@ -458,7 +458,7 @@ function LoginScreen() {
               onClick={() => setMode("recovery")}
               className="w-full rounded-2xl border border-zinc-300 px-5 py-3 text-sm font-bold text-zinc-700 hover:bg-zinc-50"
             >
-              Recuperar contraseÃ±a
+              Recuperar contraseña
             </button>
           </form>
         ) : (
@@ -472,7 +472,7 @@ function LoginScreen() {
             />
 
             <button className="w-full rounded-2xl bg-red-700 px-5 py-4 font-black text-white hover:bg-red-800">
-              Enviar recuperaciÃ³n
+              Enviar recuperación
             </button>
 
             <button
@@ -494,7 +494,7 @@ function DashboardModule({ attentions, medicines, companies, plants }) {
     return {
       attentions: attentions.length,
       highRisk: attentions.filter((attention) =>
-        ["Alto", "CrÃ­tico"].includes(attention.risk_level)
+        ["Alto", "Crítico"].includes(attention.risk_level)
       ).length,
       vitalAlerts: attentions.filter(hasVitalAlert).length,
       lowStock: medicines.filter(
@@ -513,13 +513,13 @@ function DashboardModule({ attentions, medicines, companies, plants }) {
         <KpiCard
           label="Atenciones"
           value={kpis.attentions}
-          helper="Total histÃ³rico"
+          helper="Total histórico"
           tone="dark"
         />
         <KpiCard
-          label="Alto / crÃ­tico"
+          label="Alto / crítico"
           value={kpis.highRisk}
-          helper="Prioridad clÃ­nica"
+          helper="Prioridad clínica"
           tone={kpis.highRisk > 0 ? "red" : "neutral"}
         />
         <KpiCard
@@ -531,7 +531,7 @@ function DashboardModule({ attentions, medicines, companies, plants }) {
         <KpiCard
           label="Bajo stock"
           value={kpis.lowStock}
-          helper="Medicamentos en mÃ­nimo"
+          helper="Medicamentos en mínimo"
           tone={kpis.lowStock > 0 ? "red" : "neutral"}
         />
         <KpiCard
@@ -550,10 +550,10 @@ function DashboardModule({ attentions, medicines, companies, plants }) {
       <section className="rounded-3xl border border-zinc-200 bg-white p-6 shadow-sm">
         <div className="mb-5">
           <p className="text-xs font-semibold uppercase tracking-[0.25em] text-red-700">
-            OperaciÃ³n reciente
+            Operación reciente
           </p>
           <h2 className="mt-1 text-2xl font-black tracking-tight">
-            Ãšltimas atenciones mÃ©dicas
+            Últimas atenciones médicas
           </h2>
         </div>
 
@@ -566,9 +566,9 @@ function DashboardModule({ attentions, medicines, companies, plants }) {
                   <th className="p-3">Empresa</th>
                   <th className="p-3">Planta</th>
                   <th className="p-3">Colaborador</th>
-                  <th className="p-3">Ãrea</th>
-                  <th className="p-3">DiagnÃ³stico</th>
-                  <th className="p-3">ClasificaciÃ³n</th>
+                  <th className="p-3">Área</th>
+                  <th className="p-3">Diagnóstico</th>
+                  <th className="p-3">Clasificación</th>
                   <th className="p-3">Riesgo</th>
                   <th className="p-3">Alerta</th>
                 </tr>
@@ -602,7 +602,7 @@ function DashboardModule({ attentions, medicines, companies, plants }) {
                     <td className="p-3">
                       {hasVitalAlert(attention) ? (
                         <span className="rounded-full bg-red-100 px-2 py-1 text-xs font-bold text-red-800">
-                          SÃ­
+                          Sí
                         </span>
                       ) : (
                         <span className="rounded-full bg-emerald-100 px-2 py-1 text-xs font-bold text-emerald-800">
@@ -616,7 +616,7 @@ function DashboardModule({ attentions, medicines, companies, plants }) {
             </table>
           </div>
         ) : (
-          <EmptyState text="AÃºn no hay atenciones registradas." />
+          <EmptyState text="Aún no hay atenciones registradas." />
         )}
       </section>
     </div>
@@ -795,7 +795,7 @@ function AttentionModule({
     }
 
     if (!form.employee_number.trim()) {
-      alert("Captura el nÃºmero de empleado.");
+      alert("Captura el número de empleado.");
       return;
     }
 
@@ -830,7 +830,7 @@ function AttentionModule({
     const { error } = await supabase.from("attentions").insert(payload);
 
     if (error) {
-      alert("No se pudo registrar la atenciÃ³n: " + error.message);
+      alert("No se pudo registrar la atención: " + error.message);
       return;
     }
 
@@ -850,7 +850,7 @@ function AttentionModule({
     setForm(createInitialAttentionForm());
     await onReload();
 
-    alert("AtenciÃ³n registrada.");
+    alert("Atención registrada.");
   }
 
   async function deleteAttention(id) {
@@ -859,12 +859,12 @@ function AttentionModule({
       return;
     }
 
-    if (!confirm("Â¿Eliminar esta atenciÃ³n mÃ©dica?")) return;
+    if (!confirm("¿Eliminar esta atención médica?")) return;
 
     const { error } = await supabase.from("attentions").delete().eq("id", id);
 
     if (error) {
-      alert("No se pudo eliminar la atenciÃ³n: " + error.message);
+      alert("No se pudo eliminar la atención: " + error.message);
       return;
     }
 
@@ -913,7 +913,7 @@ function AttentionModule({
       attention.systolic_bp || "",
       attention.diastolic_bp || "",
       attention.temperature || "",
-      hasVitalAlert(attention) ? "SÃ­" : "No",
+      hasVitalAlert(attention) ? "Sí" : "No",
       attention.created_by_email || "",
       attention.notes || "",
     ]);
@@ -927,15 +927,15 @@ function AttentionModule({
         <div className="mb-5 flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.25em] text-red-700">
-              Captura clÃ­nica in-plant
+              Captura clínica in-plant
             </p>
 
             <h2 className="mt-1 text-2xl font-black tracking-tight">
-              Nueva atenciÃ³n mÃ©dica
+              Nueva atención médica
             </h2>
 
             <p className="mt-1 text-sm text-zinc-500">
-              Registro ligado a empresa, planta, Ã¡rea, diagnÃ³stico y clasificaciÃ³n.
+              Registro ligado a empresa, planta, área, diagnóstico y clasificación.
             </p>
           </div>
 
@@ -982,7 +982,7 @@ function AttentionModule({
 
             <input
               className="rounded-2xl border border-zinc-300 px-4 py-3 outline-none ring-red-700/20 focus:ring-4"
-              placeholder="NÃºmero de empleado"
+              placeholder="Número de empleado"
               value={form.employee_number}
               onChange={(event) =>
                 updateFormField("employee_number", event.target.value)
@@ -998,21 +998,21 @@ function AttentionModule({
 
             <input
               className="rounded-2xl border border-zinc-300 px-4 py-3 outline-none ring-red-700/20 focus:ring-4"
-              placeholder="Ãrea / categorÃ­a"
+              placeholder="Área / categoría"
               value={form.area}
               onChange={(event) => updateFormField("area", event.target.value)}
             />
 
             <input
               className="rounded-2xl border border-zinc-300 px-4 py-3 outline-none ring-red-700/20 focus:ring-4"
-              placeholder="DiagnÃ³stico / descripciÃ³n"
+              placeholder="Diagnóstico / descripción"
               value={form.diagnosis}
               onChange={(event) => updateFormField("diagnosis", event.target.value)}
             />
 
             <input
               className="rounded-2xl border border-zinc-300 px-4 py-3 outline-none ring-red-700/20 focus:ring-4"
-              placeholder="ClasificaciÃ³n del padecimiento"
+              placeholder="Clasificación del padecimiento"
               value={form.condition_classification}
               onChange={(event) =>
                 updateFormField("condition_classification", event.target.value)
@@ -1033,7 +1033,7 @@ function AttentionModule({
 
             <input
               className="rounded-2xl border border-zinc-300 px-4 py-3 outline-none ring-red-700/20 focus:ring-4"
-              placeholder="Tiempo atenciÃ³n min"
+              placeholder="Tiempo atención min"
               type="number"
               value={form.attention_minutes}
               onChange={(event) =>
@@ -1049,7 +1049,7 @@ function AttentionModule({
               <option value="">Sin medicamento</option>
               {medicines.map((medicine) => (
                 <option key={medicine.id} value={medicine.id}>
-                  {medicine.name} Â· stock {medicine.stock}
+                  {medicine.name} · stock {medicine.stock}
                 </option>
               ))}
             </select>
@@ -1084,7 +1084,7 @@ function AttentionModule({
 
             <input
               className="rounded-2xl border border-zinc-300 px-4 py-3 outline-none ring-red-700/20 focus:ring-4"
-              placeholder="TA sistÃ³lica"
+              placeholder="TA sistólica"
               type="number"
               value={form.systolic_bp}
               onChange={(event) => updateFormField("systolic_bp", event.target.value)}
@@ -1092,7 +1092,7 @@ function AttentionModule({
 
             <input
               className="rounded-2xl border border-zinc-300 px-4 py-3 outline-none ring-red-700/20 focus:ring-4"
-              placeholder="TA diastÃ³lica"
+              placeholder="TA diastólica"
               type="number"
               value={form.diastolic_bp}
               onChange={(event) =>
@@ -1117,7 +1117,7 @@ function AttentionModule({
             />
 
             <button className="rounded-2xl bg-red-700 px-5 py-4 font-black text-white shadow-sm hover:bg-red-800 md:col-span-4">
-              Registrar atenciÃ³n
+              Registrar atención
             </button>
           </form>
         ) : (
@@ -1129,7 +1129,7 @@ function AttentionModule({
         <div className="mb-5 flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.25em] text-red-700">
-              Historial clÃ­nico
+              Historial clínico
             </p>
 
             <h2 className="mt-1 text-2xl font-black tracking-tight">
@@ -1242,13 +1242,13 @@ function AttentionModule({
                 <th className="p-3">Planta</th>
                 <th className="p-3">Colaborador</th>
                 <th className="p-3">Empleado</th>
-                <th className="p-3">Ãrea</th>
-                <th className="p-3">DiagnÃ³stico</th>
-                <th className="p-3">ClasificaciÃ³n</th>
+                <th className="p-3">Área</th>
+                <th className="p-3">Diagnóstico</th>
+                <th className="p-3">Clasificación</th>
                 <th className="p-3">Riesgo</th>
                 <th className="p-3">Signos</th>
                 <th className="p-3">Medicamento</th>
-                <th className="p-3">CapturÃ³</th>
+                <th className="p-3">Capturó</th>
                 {canDelete && <th className="p-3 text-right">Acciones</th>}
               </tr>
             </thead>
@@ -1420,7 +1420,7 @@ function InventoryModule({ medicines, userRole, onReload }) {
       return;
     }
 
-    if (!confirm("Â¿Eliminar este medicamento?")) return;
+    if (!confirm("¿Eliminar este medicamento?")) return;
 
     const { error } = await supabase.from("medicines").delete().eq("id", id);
 
@@ -1437,7 +1437,7 @@ function InventoryModule({ medicines, userRole, onReload }) {
       <section className="rounded-3xl border border-zinc-200 bg-white p-6 shadow-sm">
         <div className="mb-5">
           <p className="text-xs font-semibold uppercase tracking-[0.25em] text-red-700">
-            Inventario mÃ©dico
+            Inventario médico
           </p>
           <h2 className="mt-1 text-2xl font-black tracking-tight">
             {editingId ? "Editar medicamento" : "Registrar medicamento"}
@@ -1463,7 +1463,7 @@ function InventoryModule({ medicines, userRole, onReload }) {
 
             <input
               className="rounded-2xl border border-zinc-300 px-4 py-3 outline-none ring-red-700/20 focus:ring-4"
-              placeholder="MÃ­nimo"
+              placeholder="Mínimo"
               type="number"
               value={form.minimum_stock}
               onChange={(event) => updateField("minimum_stock", event.target.value)}
@@ -1513,7 +1513,7 @@ function InventoryModule({ medicines, userRole, onReload }) {
               <tr className="border-b bg-zinc-950 text-left text-xs uppercase tracking-wide text-white">
                 <th className="p-3">Medicamento</th>
                 <th className="p-3">Stock</th>
-                <th className="p-3">MÃ­nimo</th>
+                <th className="p-3">Mínimo</th>
                 <th className="p-3">Unidad</th>
                 <th className="p-3">Estado</th>
                 {canManage && <th className="p-3 text-right">Acciones</th>}
@@ -1581,7 +1581,7 @@ function InventoryModule({ medicines, userRole, onReload }) {
   );
 }
 
-function ReportList({ title, items, empty = "Sin informaciÃ³n." }) {
+function ReportList({ title, items, empty = "Sin información." }) {
   return (
     <section className="rounded-3xl border border-zinc-200 bg-white p-6 shadow-sm">
       <h3 className="text-xl font-black tracking-tight">{title}</h3>
@@ -1684,7 +1684,7 @@ function ReportsModule({ attentions, medicines, companies, plants }) {
     }));
 
     const highRisk = reportAttentions.filter((attention) =>
-      ["Alto", "CrÃ­tico"].includes(attention.risk_level)
+      ["Alto", "Crítico"].includes(attention.risk_level)
     ).length;
 
     const vitalAlerts = reportAttentions.filter(hasVitalAlert).length;
@@ -1711,7 +1711,7 @@ function ReportsModule({ attentions, medicines, companies, plants }) {
 
     const byPlant = plants
       .map((plant) => ({
-        label: `${getCompanyName(companies, plant.company_id)} Â· ${plant.name}`,
+        label: `${getCompanyName(companies, plant.company_id)} · ${plant.name}`,
         value: reportAttentions.filter((attention) => attention.plant_id === plant.id)
           .length,
       }))
@@ -1721,7 +1721,7 @@ function ReportsModule({ attentions, medicines, companies, plants }) {
     const byAreaMap = new Map();
 
     reportAttentions.forEach((attention) => {
-      const area = cleanLabel(attention.area, "Sin Ã¡rea");
+      const area = cleanLabel(attention.area, "Sin área");
       byAreaMap.set(area, (byAreaMap.get(area) || 0) + 1);
     });
 
@@ -1751,7 +1751,7 @@ function ReportsModule({ attentions, medicines, companies, plants }) {
 
     reportAttentions.forEach((attention) => {
       const patientName = cleanLabel(attention.patient_name, "Sin nombre");
-      const employeeNumber = cleanLabel(attention.employee_number, "Sin nÃºmero");
+      const employeeNumber = cleanLabel(attention.employee_number, "Sin número");
 
       const isGeneratedEmployeeNumber = String(employeeNumber).startsWith(
         "SIN-NUMERO-FILA"
@@ -1767,7 +1767,7 @@ function ReportsModule({ attentions, medicines, companies, plants }) {
         frequentUsersMap.set(key, {
           patient_name: patientName,
           employee_number: isGeneratedEmployeeNumber
-            ? "Sin nÃºmero real"
+            ? "Sin número real"
             : employeeNumber,
           count: 0,
           high_risk_count: 0,
@@ -1783,7 +1783,7 @@ function ReportsModule({ attentions, medicines, companies, plants }) {
 
       current.count += 1;
 
-      if (["Alto", "CrÃ­tico"].includes(attention.risk_level)) {
+      if (["Alto", "Crítico"].includes(attention.risk_level)) {
         current.high_risk_count += 1;
       }
 
@@ -1791,10 +1791,10 @@ function ReportsModule({ attentions, medicines, companies, plants }) {
         current.vital_alert_count += 1;
       }
 
-      const area = cleanLabel(attention.area, "Sin Ã¡rea");
+      const area = cleanLabel(attention.area, "Sin área");
       current.areas.set(area, (current.areas.get(area) || 0) + 1);
 
-      const diagnosis = cleanLabel(attention.diagnosis, "Sin diagnÃ³stico");
+      const diagnosis = cleanLabel(attention.diagnosis, "Sin diagnóstico");
       current.diagnoses.set(diagnosis, (current.diagnoses.get(diagnosis) || 0) + 1);
 
       const classification = cleanLabel(
@@ -1816,8 +1816,8 @@ function ReportsModule({ attentions, medicines, companies, plants }) {
 
     const frequentUsers = Array.from(frequentUsersMap.values())
       .map((item) => {
-        const topArea = getTopFromMap(item.areas, "Sin Ã¡rea");
-        const topDiagnosis = getTopFromMap(item.diagnoses, "Sin diagnÃ³stico");
+        const topArea = getTopFromMap(item.areas, "Sin área");
+        const topDiagnosis = getTopFromMap(item.diagnoses, "Sin diagnóstico");
         const topClassification = getTopFromMap(
           item.classifications,
           "Sin clasificar"
@@ -1841,7 +1841,7 @@ function ReportsModule({ attentions, medicines, companies, plants }) {
     const diagnosisMap = new Map();
 
     reportAttentions.forEach((attention) => {
-      const diagnosis = cleanLabel(attention.diagnosis, "Sin diagnÃ³stico");
+      const diagnosis = cleanLabel(attention.diagnosis, "Sin diagnóstico");
       const key = normalizeForGrouping(diagnosis);
 
       if (!diagnosisMap.has(key)) {
@@ -1858,11 +1858,11 @@ function ReportsModule({ attentions, medicines, companies, plants }) {
 
       current.count += 1;
 
-      if (["Alto", "CrÃ­tico"].includes(attention.risk_level)) {
+      if (["Alto", "Crítico"].includes(attention.risk_level)) {
         current.high_risk_count += 1;
       }
 
-      const area = cleanLabel(attention.area, "Sin Ã¡rea");
+      const area = cleanLabel(attention.area, "Sin área");
       current.areas.set(area, (current.areas.get(area) || 0) + 1);
 
       const classification = cleanLabel(
@@ -1877,7 +1877,7 @@ function ReportsModule({ attentions, medicines, companies, plants }) {
 
     const frequentDiagnoses = Array.from(diagnosisMap.values())
       .map((item) => {
-        const topArea = getTopFromMap(item.areas, "Sin Ã¡rea");
+        const topArea = getTopFromMap(item.areas, "Sin área");
         const topClassification = getTopFromMap(
           item.classifications,
           "Sin clasificar"
@@ -1899,7 +1899,7 @@ function ReportsModule({ attentions, medicines, companies, plants }) {
     const classificationByAreaMap = new Map();
 
     reportAttentions.forEach((attention) => {
-      const area = cleanLabel(attention.area, "Sin Ã¡rea");
+      const area = cleanLabel(attention.area, "Sin área");
       const classification = cleanLabel(
         attention.condition_classification,
         "Sin clasificar"
@@ -1985,7 +1985,7 @@ function ReportsModule({ attentions, medicines, companies, plants }) {
       attention.diagnosis || "",
       attention.condition_classification || "Sin clasificar",
       attention.risk_level,
-      hasVitalAlert(attention) ? "SÃ­" : "No",
+      hasVitalAlert(attention) ? "Sí" : "No",
       attention.medicines?.name || getMedicineName(medicines, attention.medicine_id),
       attention.created_by_email || "",
     ]);
@@ -2009,31 +2009,31 @@ function ReportsModule({ attentions, medicines, companies, plants }) {
       rows.push([
         "Colaboradores frecuentes",
         `${item.patient_name} (${item.employee_number})`,
-        `Ãrea frecuente: ${item.top_area} | ClasificaciÃ³n frecuente: ${item.top_classification}`,
+        `Área frecuente: ${item.top_area} | Clasificación frecuente: ${item.top_classification}`,
         item.count,
-        `DiagnÃ³stico frecuente: ${item.top_diagnosis} | Alto/CrÃ­tico: ${item.high_risk_count} | Alertas vitales: ${item.vital_alert_count}`,
+        `Diagnóstico frecuente: ${item.top_diagnosis} | Alto/Crítico: ${item.high_risk_count} | Alertas vitales: ${item.vital_alert_count}`,
         item.last_attention_date,
       ]);
     });
 
     report.frequentDiagnoses.forEach((item) => {
       rows.push([
-        "DiagnÃ³sticos frecuentes",
+        "Diagnósticos frecuentes",
         item.diagnosis,
-        `Ãrea mÃ¡s asociada: ${item.top_area} | ClasificaciÃ³n: ${item.top_classification}`,
+        `Área más asociada: ${item.top_area} | Clasificación: ${item.top_classification}`,
         item.count,
-        `${item.percentage}% del periodo | Alto/CrÃ­tico: ${item.high_risk_count}`,
+        `${item.percentage}% del periodo | Alto/Crítico: ${item.high_risk_count}`,
         "",
       ]);
     });
 
     report.classificationByArea.forEach((item) => {
       rows.push([
-        "ClasificaciÃ³n mÃ¡s frecuente por Ã¡rea",
+        "Clasificación más frecuente por área",
         item.area,
         item.top_classification,
         item.top_classification_count,
-        `${item.percentage}% del Ã¡rea | Total Ã¡rea: ${item.total}`,
+        `${item.percentage}% del área | Total área: ${item.total}`,
         "",
       ]);
     });
@@ -2071,7 +2071,7 @@ function ReportsModule({ attentions, medicines, companies, plants }) {
             </table>
           </div>
         ) : (
-          <EmptyState text={empty || "Sin informaciÃ³n para mostrar."} />
+          <EmptyState text={empty || "Sin información para mostrar."} />
         )}
       </section>
     );
@@ -2087,11 +2087,11 @@ function ReportsModule({ attentions, medicines, companies, plants }) {
             </p>
 
             <h2 className="mt-1 text-2xl font-black tracking-tight">
-              Reporte mensual mÃ©dico
+              Reporte mensual médico
             </h2>
 
             <p className="mt-1 text-sm text-zinc-500">
-              {getMonthLabel(reportMonth)} Â· {report.total} atenciones
+              {getMonthLabel(reportMonth)} · {report.total} atenciones
             </p>
           </div>
 
@@ -2168,7 +2168,7 @@ function ReportsModule({ attentions, medicines, companies, plants }) {
             tone="dark"
           />
           <KpiCard
-            label="Alto / crÃ­tico"
+            label="Alto / crítico"
             value={report.highRisk}
             helper="Eventos prioritarios"
             tone={report.highRisk > 0 ? "red" : "neutral"}
@@ -2182,30 +2182,30 @@ function ReportsModule({ attentions, medicines, companies, plants }) {
           <KpiCard
             label="Recurrentes"
             value={report.recurrentUsersCount}
-            helper="2 o mÃ¡s atenciones"
+            helper="2 o más atenciones"
             tone={report.recurrentUsersCount > 0 ? "blue" : "neutral"}
           />
           <KpiCard
             label="Tiempo promedio"
             value={`${report.averageMinutes} min`}
-            helper="Por atenciÃ³n"
+            helper="Por atención"
           />
         </div>
       </section>
 
       <DetailedTable
         title="Colaboradores frecuentes"
-        subtitle="Colaboradores con 2 o mÃ¡s atenciones durante el periodo filtrado."
+        subtitle="Colaboradores con 2 o más atenciones durante el periodo filtrado."
         columns={[
           "Colaborador",
           "Empleado",
           "Atenciones",
-          "Ãrea frecuente",
-          "DiagnÃ³stico frecuente",
-          "ClasificaciÃ³n frecuente",
-          "Alto/CrÃ­tico",
+          "Área frecuente",
+          "Diagnóstico frecuente",
+          "Clasificación frecuente",
+          "Alto/Crítico",
           "Alertas vitales",
-          "Ãšltima atenciÃ³n",
+          "Última atención",
         ]}
         rows={report.frequentUsers}
         empty="No hay colaboradores recurrentes en el periodo."
@@ -2248,18 +2248,18 @@ function ReportsModule({ attentions, medicines, companies, plants }) {
       />
 
       <DetailedTable
-        title="DiagnÃ³sticos frecuentes"
-        subtitle="DiagnÃ³sticos mÃ¡s repetidos en el periodo filtrado."
+        title="Diagnósticos frecuentes"
+        subtitle="Diagnósticos más repetidos en el periodo filtrado."
         columns={[
-          "DiagnÃ³stico",
+          "Diagnóstico",
           "Frecuencia",
           "% del periodo",
-          "Ãrea mÃ¡s asociada",
-          "ClasificaciÃ³n",
-          "Alto/CrÃ­tico",
+          "Área más asociada",
+          "Clasificación",
+          "Alto/Crítico",
         ]}
         rows={report.frequentDiagnoses}
-        empty="No hay diagnÃ³sticos registrados en el periodo."
+        empty="No hay diagnósticos registrados en el periodo."
         renderRow={(item) => (
           <tr
             key={`${item.diagnosis}-${item.top_area}`}
@@ -2288,17 +2288,17 @@ function ReportsModule({ attentions, medicines, companies, plants }) {
       />
 
       <DetailedTable
-        title="ClasificaciÃ³n mÃ¡s frecuente por Ã¡rea"
-        subtitle="Identifica el tipo de padecimiento predominante en cada Ã¡rea."
+        title="Clasificación más frecuente por área"
+        subtitle="Identifica el tipo de padecimiento predominante en cada área."
         columns={[
-          "Ãrea",
-          "ClasificaciÃ³n predominante",
-          "Eventos de esa clasificaciÃ³n",
-          "Total del Ã¡rea",
-          "% dentro del Ã¡rea",
+          "Área",
+          "Clasificación predominante",
+          "Eventos de esa clasificación",
+          "Total del área",
+          "% dentro del área",
         ]}
         rows={report.classificationByArea}
-        empty="No hay Ã¡reas con clasificaciones registradas en el periodo."
+        empty="No hay áreas con clasificaciones registradas en el periodo."
         renderRow={(item) => (
           <tr key={item.area} className="border-b align-top hover:bg-zinc-50">
             <td className="p-3 font-bold">{item.area}</td>
@@ -2315,10 +2315,10 @@ function ReportsModule({ attentions, medicines, companies, plants }) {
       />
 
       <section className="grid grid-cols-1 gap-6 xl:grid-cols-2">
-        <ReportList title="DistribuciÃ³n por riesgo" items={report.byRisk} />
+        <ReportList title="Distribución por riesgo" items={report.byRisk} />
 
         <ReportList
-          title="Padecimientos mÃ¡s frecuentes"
+          title="Padecimientos más frecuentes"
           items={report.byClassification}
           empty="Sin clasificaciones registradas en el periodo."
         />
@@ -2336,9 +2336,9 @@ function ReportsModule({ attentions, medicines, companies, plants }) {
         />
 
         <ReportList
-          title="Atenciones por Ã¡rea"
+          title="Atenciones por área"
           items={report.byArea}
-          empty="Sin Ã¡reas con registros en el periodo."
+          empty="Sin áreas con registros en el periodo."
         />
       </section>
     </div>
@@ -2467,7 +2467,7 @@ export default function App() {
           <p className="text-xs font-black uppercase tracking-[0.25em] text-red-400">
             SOS MedicalOps
           </p>
-          <p className="mt-2 text-sm text-zinc-300">Cargando sesiÃ³n...</p>
+          <p className="mt-2 text-sm text-zinc-300">Cargando sesión...</p>
         </div>
       </main>
     );
@@ -2495,7 +2495,7 @@ export default function App() {
             onClick={signOut}
             className="mt-6 rounded-2xl bg-zinc-950 px-5 py-3 text-sm font-black text-white"
           >
-            Cerrar sesiÃ³n
+            Cerrar sesión
           </button>
         </section>
       </main>
@@ -2550,7 +2550,7 @@ export default function App() {
             onClick={signOut}
             className="mt-4 w-full rounded-xl bg-white px-3 py-2 text-sm font-black text-zinc-950"
           >
-            Cerrar sesiÃ³n
+            Cerrar sesión
           </button>
         </div>
       </aside>
