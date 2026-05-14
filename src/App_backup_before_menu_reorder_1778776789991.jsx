@@ -13,27 +13,57 @@ import QuickAttentionModule from "./QuickAttentionModule.jsx";
 const riskOptions = ["Bajo", "Medio", "Alto", "Crítico"];
 
 const navItems = [
-  { id: "dashboard", label: "Dashboard", subtitle: "Centro de mando" },
-
+  
+  
   { id: "captura_rapida", label: "Captura rápida", subtitle: "Atención en 60 segundos" },
-  { id: "atenciones", label: "Atenciones", subtitle: "Consulta in-plant" },
-  { id: "pendientes", label: "Pendientes clínicos", subtitle: "Seguimiento operativo" },
-  { id: "bitacora", label: "Bitácora diaria", subtitle: "Entrega y recepción" },
-  { id: "checklist", label: "Checklist apertura/cierre", subtitle: "Control de consultorio" },
-
-  { id: "ingreso", label: "Examen ingreso", subtitle: "Historia clínica ocupacional" },
-  { id: "antidoping", label: "Antidoping", subtitle: "Pruebas toxicológicas" },
-  { id: "cronicos", label: "Crónico-degenerativos", subtitle: "Programa preventivo" },
-  { id: "incapacidades", label: "Incapacidades", subtitle: "Ausentismo médico" },
-  { id: "formatos", label: "Formatos", subtitle: "Consentimientos" },
-
-  { id: "inventario", label: "Inventario", subtitle: "Medicamentos e insumos" },
-  { id: "alertas", label: "Alertas", subtitle: "Riesgos y vencimientos" },
-  { id: "reportes", label: "Reportes", subtitle: "Indicadores ejecutivos" },
-
-  { id: "empresas", label: "Empresas", subtitle: "Clientes y plantas" },
-  { id: "admin", label: "Admin", subtitle: "Usuarios y alcance" },
-  { id: "importar", label: "Importar Excel", subtitle: "Carga masiva" },
+{ id: "ingreso", label: "Examen ingreso", subtitle: "Historia clínica ocupacional" },
+    { id: "formatos", label: "Formatos", subtitle: "Consentimientos" },
+{ id: "consentimientos", label: "Consentimientos", subtitle: "Formatos físicos" },
+{
+    id: "dashboard",
+    label: "Dashboard",
+    subtitle: "Centro de mando",
+  },
+  {
+    id: "empresas",
+    label: "Empresas",
+    subtitle: "Clientes y plantas",
+  },
+  {
+    id: "admin",
+    label: "Admin",
+    subtitle: "Usuarios y alcance",
+  },
+  {
+    id: "importar",
+    label: "Importar Excel",
+    subtitle: "Carga masiva",
+  },
+  {
+    id: "atenciones",
+    label: "Atenciones",
+    subtitle: "Consulta in-plant",
+  },
+  {
+    id: "antidoping",
+    label: "Antidoping",
+    subtitle: "Pruebas toxicológicas",
+  },
+  {
+    id: "cronicos",
+    label: "Crónico-degenerativos",
+    subtitle: "Programa preventivo",
+  },
+  {
+    id: "inventario",
+    label: "Inventario",
+    subtitle: "Medicamentos",
+  },
+  {
+    id: "reportes",
+    label: "Reportes",
+    subtitle: "Indicadores",
+  },
 ];
 
 function createInitialAttentionForm() {
