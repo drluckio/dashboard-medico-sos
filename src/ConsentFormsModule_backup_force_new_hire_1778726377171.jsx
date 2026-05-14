@@ -70,8 +70,7 @@ const alcoholResultOptions = [
 ];
 
 const consentFormOptions = [
-  { id: "new_hire", label: "Nuevo ingreso" },
-{ id: "alcohol", label: "Alcoholimetría" },
+  { id: "alcohol", label: "Alcoholimetría" },
   { id: "antidoping", label: "Antidoping" },
   { id: "medical", label: "Revisión médica en consultorio" },
   { id: "referral", label: "Referencia / carta compromiso" },
@@ -731,8 +730,7 @@ function buildSelectedPages(types, form, companies, plants) {
   const selectedTypes = Array.isArray(types) ? types : [types];
 
   const builders = {
-    new_hire: buildNewHireConsent,
-alcohol: buildAlcoholConsent,
+    alcohol: buildAlcoholConsent,
     antidoping: buildAntidopingConsent,
     medical: buildMedicalReviewConsent,
     referral: buildReferralCommitment,
@@ -1312,14 +1310,6 @@ export default function ConsentFormsModule({
           </p>
 
           <div className="grid grid-cols-1 gap-3 md:grid-cols-5">
-            <button
-              type="button"
-              onClick={() => printDocument("new_hire", form, companies, plants)}
-              className="rounded-2xl border border-zinc-300 bg-zinc-50 px-4 py-3 text-sm font-black text-zinc-900 hover:bg-zinc-100"
-            >
-              Nuevo ingreso
-            </button>
-
             <button
               type="button"
               onClick={() => printDocument("alcohol", form, companies, plants)}

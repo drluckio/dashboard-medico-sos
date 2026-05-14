@@ -70,8 +70,7 @@ const alcoholResultOptions = [
 ];
 
 const consentFormOptions = [
-  { id: "new_hire", label: "Nuevo ingreso" },
-{ id: "alcohol", label: "Alcoholimetría" },
+  { id: "alcohol", label: "Alcoholimetría" },
   { id: "antidoping", label: "Antidoping" },
   { id: "medical", label: "Revisión médica en consultorio" },
   { id: "referral", label: "Referencia / carta compromiso" },
@@ -376,90 +375,6 @@ function footer() {
   `;
 }
 
-
-function buildNewHireConsent(form, companies, plants) {
-  return `
-    <main class="page">
-      ${header(
-        "Consentimiento informado para examen médico de nuevo ingreso",
-        "Formato físico para autorización de valoración médica ocupacional previa al ingreso laboral."
-      )}
-
-      ${collaboratorGrid(form, companies, plants)}
-
-      <h2>Declaración y consentimiento</h2>
-
-      <p class="paragraph">
-        Manifiesto que he sido informado(a) de que el examen médico de nuevo ingreso tiene como finalidad
-        valorar mi estado general de salud, antecedentes médicos, signos vitales, exploración física y
-        compatibilidad médico-funcional con el puesto propuesto, desde una perspectiva de salud ocupacional,
-        prevención de riesgos y seguridad industrial.
-      </p>
-
-      <p class="paragraph">
-        Entiendo que esta valoración médica ocupacional puede incluir interrogatorio clínico, antecedentes
-        heredofamiliares, antecedentes personales patológicos y no patológicos, antecedentes laborales,
-        revisión por aparatos y sistemas, toma de signos vitales, somatometría, exploración física general,
-        exploración neurológica básica, valoración visual, movilidad, equilibrio, coordinación y otras pruebas
-        funcionales relacionadas con el perfil del puesto.
-      </p>
-
-      <p class="paragraph">
-        Entiendo que, dependiendo del puesto evaluado, el personal médico podrá solicitar o revisar estudios
-        complementarios tales como audiometría, espirometría, radiografías, laboratorio, electrocardiograma,
-        pruebas funcionales, antidoping u otros estudios ocupacionales aplicables. Cuando exista un consentimiento
-        específico para alguno de estos procedimientos, este deberá recabarse de forma independiente.
-      </p>
-
-      <p class="paragraph">
-        Reconozco que este examen no sustituye la atención de mi médico tratante, unidad médica familiar,
-        consulta especializada, servicio de urgencias ni estudios diagnósticos externos. Su alcance se limita
-        a la emisión de un dictamen médico ocupacional relacionado con el puesto evaluado.
-      </p>
-
-      <ul class="checklist">
-        <li><span class="check"></span>Autorizo la realización del examen médico de nuevo ingreso.</li>
-        <li><span class="check"></span>Autorizo la toma de signos vitales y somatometría.</li>
-        <li><span class="check"></span>Autorizo el interrogatorio médico ocupacional y registro de antecedentes relevantes.</li>
-        <li><span class="check"></span>Autorizo la exploración física y funcional necesaria conforme al puesto evaluado.</li>
-        <li><span class="check"></span>Entiendo que puedo informar molestias, antecedentes, enfermedades, tratamientos o limitaciones relevantes.</li>
-        <li><span class="check"></span>Entiendo que el resultado podrá ser: apto, apto con recomendaciones, apto con restricciones, no apto temporal, no apto para el puesto evaluado o requiere valoración complementaria.</li>
-        <li><span class="check"></span>Entiendo que el expediente clínico completo queda bajo resguardo médico y que a RH/EHS solo se comunicará el dictamen operativo necesario.</li>
-      </ul>
-
-      <h2>Datos del proceso de nuevo ingreso</h2>
-
-      <section class="grid">
-        ${box("Fecha y hora", formatDateTime(form.datetime))}
-        ${box("Empresa", getCompanyName(form, companies))}
-        ${box("Planta", getPlantName(form, plants))}
-        ${box("Puesto evaluado", form.job_position)}
-        ${box("Área", form.area)}
-        ${box("Motivo", "Examen médico de nuevo ingreso")}
-        ${box("Observaciones", form.observations, true)}
-      </section>
-
-      <div class="notice">
-        La firma de este consentimiento acredita que el aspirante fue informado sobre el alcance del examen
-        médico ocupacional de nuevo ingreso y autoriza la valoración correspondiente. La información clínica
-        completa deberá mantenerse bajo resguardo médico y confidencial.
-      </div>
-
-      <section class="signature-grid">
-        ${signature("Firma del aspirante", form.collaborator_name || "Nombre y firma")}
-        ${signature("Firma de quien informa y recaba", form.staff_name || "Nombre y firma")}
-      </section>
-
-      <section class="signature-grid">
-        ${signature("Médico responsable", `${form.physician_name || "Nombre"} · Cédula: ${form.physician_license || "__________"}`)}
-        ${signature("Testigo / RH / EHS", form.witness_name || "Nombre y firma")}
-      </section>
-
-      ${footer()}
-    </main>
-  `;
-}
-
 function buildAlcoholConsent(form, companies, plants) {
   return `
     <main class="page">
@@ -731,8 +646,7 @@ function buildSelectedPages(types, form, companies, plants) {
   const selectedTypes = Array.isArray(types) ? types : [types];
 
   const builders = {
-    new_hire: buildNewHireConsent,
-alcohol: buildAlcoholConsent,
+    alcohol: buildAlcoholConsent,
     antidoping: buildAntidopingConsent,
     medical: buildMedicalReviewConsent,
     referral: buildReferralCommitment,
@@ -1311,15 +1225,7 @@ export default function ConsentFormsModule({
             Impresión rápida individual
           </p>
 
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-5">
-            <button
-              type="button"
-              onClick={() => printDocument("new_hire", form, companies, plants)}
-              className="rounded-2xl border border-zinc-300 bg-zinc-50 px-4 py-3 text-sm font-black text-zinc-900 hover:bg-zinc-100"
-            >
-              Nuevo ingreso
-            </button>
-
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
             <button
               type="button"
               onClick={() => printDocument("alcohol", form, companies, plants)}
