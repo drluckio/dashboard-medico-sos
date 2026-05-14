@@ -1428,12 +1428,12 @@ function buildPhysicalConsentHtml(exam, companies, plants) {
   const profileKeys = selectedProfileKeysFromExam(exam);
   const profileLabel = getSelectedProfileLabels(profileKeys);
 
-  return `
+  return \`
 <!doctype html>
 <html>
 <head>
   <meta charset="utf-8" />
-  <title>Consentimiento informado - ${escapeHtml(exam.candidate_name)}</title>
+  <title>Consentimiento informado - \${escapeHtml(exam.candidate_name)}</title>
   <style>
     * { box-sizing: border-box; }
     body {
@@ -1604,37 +1604,37 @@ function buildPhysicalConsentHtml(exam, companies, plants) {
     <section class="grid">
       <div class="box">
         <div class="label">Aspirante</div>
-        <div class="value">${escapeHtml(exam.candidate_name || "-")}</div>
+        <div class="value">\${escapeHtml(exam.candidate_name || "-")}</div>
       </div>
 
       <div class="box">
         <div class="label">Identificador</div>
-        <div class="value">${escapeHtml(exam.candidate_identifier || "-")}</div>
+        <div class="value">\${escapeHtml(exam.candidate_identifier || "-")}</div>
       </div>
 
       <div class="box">
         <div class="label">Empresa</div>
-        <div class="value">${escapeHtml(companyName)}</div>
+        <div class="value">\${escapeHtml(companyName)}</div>
       </div>
 
       <div class="box">
         <div class="label">Planta</div>
-        <div class="value">${escapeHtml(plantName)}</div>
+        <div class="value">\${escapeHtml(plantName)}</div>
       </div>
 
       <div class="box">
         <div class="label">Puesto evaluado</div>
-        <div class="value">${escapeHtml(exam.job_position || "-")}</div>
+        <div class="value">\${escapeHtml(exam.job_position || "-")}</div>
       </div>
 
       <div class="box">
         <div class="label">Fecha de valoración</div>
-        <div class="value">${escapeHtml(formatDate(exam.exam_date))}</div>
+        <div class="value">\${escapeHtml(formatDate(exam.exam_date))}</div>
       </div>
 
       <div class="box full">
         <div class="label">Perfil ocupacional evaluado</div>
-        <div class="value">${escapeHtml(profileLabel)}</div>
+        <div class="value">\${escapeHtml(profileLabel)}</div>
       </div>
     </section>
 
@@ -1668,47 +1668,47 @@ function buildPhysicalConsentHtml(exam, companies, plants) {
     <section class="grid">
       <div class="box">
         <div class="label">Aviso de privacidad entregado</div>
-        <div class="value">${escapeHtml(consent.privacy_notice_delivered || "-")}</div>
+        <div class="value">\${escapeHtml(consent.privacy_notice_delivered || "-")}</div>
       </div>
 
       <div class="box">
         <div class="label">Medio de entrega</div>
-        <div class="value">${escapeHtml(consent.privacy_notice_medium || "-")}</div>
+        <div class="value">\${escapeHtml(consent.privacy_notice_medium || "-")}</div>
       </div>
 
       <div class="box">
         <div class="label">Consentimiento valoración médica</div>
-        <div class="value">${escapeHtml(consent.medical_evaluation_consent || "-")}</div>
+        <div class="value">\${escapeHtml(consent.medical_evaluation_consent || "-")}</div>
       </div>
 
       <div class="box">
         <div class="label">Consentimiento antidoping</div>
-        <div class="value">${escapeHtml(consent.antidoping_consent || "-")}</div>
+        <div class="value">\${escapeHtml(consent.antidoping_consent || "-")}</div>
       </div>
 
       <div class="box">
         <div class="label">Consentimiento datos sensibles</div>
-        <div class="value">${escapeHtml(consent.sensitive_data_consent || "-")}</div>
+        <div class="value">\${escapeHtml(consent.sensitive_data_consent || "-")}</div>
       </div>
 
       <div class="box">
         <div class="label">Fecha/hora de aceptación</div>
-        <div class="value">${escapeHtml(consent.accepted_at || "-")}</div>
+        <div class="value">\${escapeHtml(consent.accepted_at || "-")}</div>
       </div>
 
       <div class="box">
         <div class="label">Informó y recabó</div>
-        <div class="value">${escapeHtml(consent.informed_by || "-")}</div>
+        <div class="value">\${escapeHtml(consent.informed_by || "-")}</div>
       </div>
 
       <div class="box">
         <div class="label">Evidencia de aceptación</div>
-        <div class="value">${escapeHtml(consent.signature_status || "-")}</div>
+        <div class="value">\${escapeHtml(consent.signature_status || "-")}</div>
       </div>
 
       <div class="box full">
         <div class="label">Observaciones</div>
-        <div class="value">${escapeHtml(consent.observations || "-")}</div>
+        <div class="value">\${escapeHtml(consent.observations || "-")}</div>
       </div>
     </section>
 
@@ -1717,32 +1717,32 @@ function buildPhysicalConsentHtml(exam, companies, plants) {
     <section class="grid">
       <div class="box">
         <div class="label">Realizado</div>
-        <div class="value">${escapeHtml(antidoping.performed || "-")}</div>
+        <div class="value">\${escapeHtml(antidoping.performed || "-")}</div>
       </div>
 
       <div class="box">
         <div class="label">Fecha de toma</div>
-        <div class="value">${escapeHtml(formatDate(antidoping.test_date))}</div>
+        <div class="value">\${escapeHtml(formatDate(antidoping.test_date))}</div>
       </div>
 
       <div class="box">
         <div class="label">Folio SOS</div>
-        <div class="value">${escapeHtml(antidoping.folio || "-")}</div>
+        <div class="value">\${escapeHtml(antidoping.folio || "-")}</div>
       </div>
 
       <div class="box">
         <div class="label">Resultado</div>
-        <div class="value">${escapeHtml(antidoping.result || "-")}</div>
+        <div class="value">\${escapeHtml(antidoping.result || "-")}</div>
       </div>
 
       <div class="box">
         <div class="label">Tipo de prueba</div>
-        <div class="value">${escapeHtml(antidoping.test_type || "-")}</div>
+        <div class="value">\${escapeHtml(antidoping.test_type || "-")}</div>
       </div>
 
       <div class="box">
         <div class="label">Lote</div>
-        <div class="value">${escapeHtml(antidoping.lot_number || "-")}</div>
+        <div class="value">\${escapeHtml(antidoping.lot_number || "-")}</div>
       </div>
     </section>
 
@@ -1755,13 +1755,13 @@ function buildPhysicalConsentHtml(exam, companies, plants) {
     <section class="signature-grid">
       <div class="signature">
         <strong>Firma del aspirante</strong>
-        Nombre: ${escapeHtml(exam.candidate_name || "____________________________")}<br />
+        Nombre: \${escapeHtml(exam.candidate_name || "____________________________")}<br />
         Fecha: ____________________________
       </div>
 
       <div class="signature">
         <strong>Firma de quien informa y recaba</strong>
-        Nombre: ${escapeHtml(consent.informed_by || "____________________________")}<br />
+        Nombre: \${escapeHtml(consent.informed_by || "____________________________")}<br />
         Fecha: ____________________________
       </div>
     </section>
@@ -1774,8 +1774,8 @@ function buildPhysicalConsentHtml(exam, companies, plants) {
 
       <div class="signature">
         <strong>Médico dictaminador</strong>
-        ${escapeHtml(exam.physician_name || "____________________________")}<br />
-        Cédula: ${escapeHtml(exam.physician_license || "________________")}
+        \${escapeHtml(exam.physician_name || "____________________________")}<br />
+        Cédula: \${escapeHtml(exam.physician_license || "________________")}
       </div>
     </section>
 
@@ -1785,13 +1785,13 @@ function buildPhysicalConsentHtml(exam, companies, plants) {
       de SOS — Soluciones Operativas Sierra Madre.
       <div class="hash">
         Hash de expediente, si ya fue cerrado digitalmente:<br />
-        ${escapeHtml(exam.signature_hash || "Pendiente de cierre digital / no disponible en esta impresión")}
+        \${escapeHtml(exam.signature_hash || "Pendiente de cierre digital / no disponible en esta impresión")}
       </div>
     </div>
   </main>
 </body>
 </html>
-`;
+\`;
 }
 
 function printPhysicalConsentDocument(exam, companies, plants, existingWindow = null) {

@@ -6,16 +6,12 @@ import CompaniesPlantsModule from "./CompaniesPlantsModule.jsx";
 import AdminAccessModule from "./AdminAccessModule.jsx";
 import ExcelImportModule from "./ExcelImportModule.jsx";
 import PreemploymentMedicalExamModule from "./PreemploymentMedicalExamModule.jsx";
-import ConsentDocumentsModule from "./ConsentDocumentsModule.jsx";
-import ConsentFormsModule from "./ConsentFormsModule.jsx";
 
 const riskOptions = ["Bajo", "Medio", "Alto", "Crítico"];
 
 const navItems = [
   
   { id: "ingreso", label: "Examen ingreso", subtitle: "Historia clínica ocupacional" },
-    { id: "formatos", label: "Formatos", subtitle: "Consentimientos" },
-{ id: "consentimientos", label: "Consentimientos", subtitle: "Formatos físicos" },
 {
     id: "dashboard",
     label: "Dashboard",
@@ -2653,21 +2649,7 @@ export default function App() {
             />
           )}
 
-          {activeModule === "consentimientos" && (
-  <ConsentDocumentsModule
-    companies={companies}
-    plants={plants}
-  />
-)}
-
-{activeModule === "formatos" && (
-  <ConsentFormsModule
-    companies={companies}
-    plants={plants}
-  />
-)}
-
-{activeModule === "ingreso" && (
+          {activeModule === "ingreso" && (
   <PreemploymentMedicalExamModule
     session={session}
     userRole={userRole}
