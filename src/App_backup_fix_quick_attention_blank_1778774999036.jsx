@@ -2650,6 +2650,7 @@ export default function App() {
     companies={companies}
     plants={plants}
     medicines={medicines}
+    onSaved={loadData}
   />
 )}
 

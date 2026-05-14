@@ -8,15 +8,12 @@ import ExcelImportModule from "./ExcelImportModule.jsx";
 import PreemploymentMedicalExamModule from "./PreemploymentMedicalExamModule.jsx";
 import ConsentDocumentsModule from "./ConsentDocumentsModule.jsx";
 import ConsentFormsModule from "./ConsentFormsModule.jsx";
-import QuickAttentionModule from "./QuickAttentionModule.jsx";
 
 const riskOptions = ["Bajo", "Medio", "Alto", "Crítico"];
 
 const navItems = [
   
-  
-  { id: "captura_rapida", label: "Captura rápida", subtitle: "Atención en 60 segundos" },
-{ id: "ingreso", label: "Examen ingreso", subtitle: "Historia clínica ocupacional" },
+  { id: "ingreso", label: "Examen ingreso", subtitle: "Historia clínica ocupacional" },
     { id: "formatos", label: "Formatos", subtitle: "Consentimientos" },
 { id: "consentimientos", label: "Consentimientos", subtitle: "Formatos físicos" },
 {
@@ -2644,16 +2641,7 @@ export default function App() {
             />
           )}
 
-          {activeModule === "captura_rapida" && (
-  <QuickAttentionModule
-    session={session}
-    companies={companies}
-    plants={plants}
-    medicines={medicines}
-  />
-)}
-
-{activeModule === "atenciones" && (
+          {activeModule === "atenciones" && (
             <AttentionModule
               session={session}
               userRole={userRole}
